@@ -233,20 +233,29 @@ export function liveCurrentMonthOpex(expenses: LiveOperatingExpense[]): number {
   return liveOpexByMonth(expenses).get(opexMonthKey(TODAY)) ?? 0;
 }
 
+/** Excludes the current, still-in-progress month - a partial month's lower
+ * total would otherwise drag the average down purely because the month
+ * isn't over yet, not because spend is actually lower. "Current month" is
+ * already shown as its own figure elsewhere on the page. */
 export function liveAverageMonthlyOpex(expenses: LiveOperatingExpense[]): number {
-  const values = Array.from(liveOpexByMonth(expenses).values());
-  return values.length ? values.reduce((a, b) => a + b, 0) / values.length : 0;
+  const currentMonth = opexMonthKey(TODAY);
+  const completeMonths = Array.from(liveOpexByMonth(expenses).entries()).filter(([month]) => month !== currentMonth);
+  return completeMonths.length ? completeMonths.reduce((s, [, v]) => s + v, 0) / completeMonths.length : 0;
 }
 
 export function liveMonthlyFixedCost(expenses: LiveOperatingExpense[]): number {
-  const months = new Set(expenses.map((e) => opexMonthKey(e.date)));
-  const fixedTotal = expenses.filter((e) => e.classification === "fixed").reduce((s, e) => s + e.amount, 0);
+  const currentMonth = opexMonthKey(TODAY);
+  const completeExpenses = expenses.filter((e) => opexMonthKey(e.date) !== currentMonth);
+  const months = new Set(completeExpenses.map((e) => opexMonthKey(e.date)));
+  const fixedTotal = completeExpenses.filter((e) => e.classification === "fixed").reduce((s, e) => s + e.amount, 0);
   return months.size ? fixedTotal / months.size : 0;
 }
 
 export function liveMonthlyVariableCost(expenses: LiveOperatingExpense[]): number {
-  const months = new Set(expenses.map((e) => opexMonthKey(e.date)));
-  const variableTotal = expenses.filter((e) => e.classification === "variable").reduce((s, e) => s + e.amount, 0);
+  const currentMonth = opexMonthKey(TODAY);
+  const completeExpenses = expenses.filter((e) => opexMonthKey(e.date) !== currentMonth);
+  const months = new Set(completeExpenses.map((e) => opexMonthKey(e.date)));
+  const variableTotal = completeExpenses.filter((e) => e.classification === "variable").reduce((s, e) => s + e.amount, 0);
   return months.size ? variableTotal / months.size : 0;
 }
 
@@ -274,21 +283,32 @@ export function liveOpexCategoryBreakdown(expenses: LiveOperatingExpense[]): Liv
   const previousMonth = `${prevDate.getUTCFullYear()}-${String(prevDate.getUTCMonth() + 1).padStart(2, "0")}`;
 
   const categories = new Map<string, LiveOpexCategoryRow>();
-  const monthsSeen = new Set<string>();
+  // monthlyAverage is spend over complete months only, divided by the same
+  // count of complete months for every category - not "ytd" divided by
+  // however many months of data happen to be on hand. Those two used to be
+  // mismatched (a YTD-2026-only numerator divided by a denominator that
+  // included months from 2025), which understated every category's average
+  // by roughly half.
+  const completeMonthTotals = new Map<string, number>();
+  const completeMonthsSeen = new Set<string>();
 
   for (const e of expenses) {
-    monthsSeen.add(opexMonthKey(e.date));
+    const monthKey = opexMonthKey(e.date);
     if (!categories.has(e.category)) {
       categories.set(e.category, { category: e.category, classification: e.classification, current: 0, previous: 0, ytd: 0, monthlyAverage: 0 });
     }
     const row = categories.get(e.category)!;
-    if (opexMonthKey(e.date) === currentMonth) row.current += e.amount;
-    if (opexMonthKey(e.date) === previousMonth) row.previous += e.amount;
+    if (monthKey === currentMonth) row.current += e.amount;
+    if (monthKey === previousMonth) row.previous += e.amount;
     if (e.date.startsWith(TODAY.slice(0, 4))) row.ytd += e.amount;
+    if (monthKey !== currentMonth) {
+      completeMonthTotals.set(e.category, (completeMonthTotals.get(e.category) ?? 0) + e.amount);
+      completeMonthsSeen.add(monthKey);
+    }
   }
 
-  const monthCount = monthsSeen.size || 1;
-  for (const row of categories.values()) row.monthlyAverage = row.ytd / monthCount;
+  const monthCount = completeMonthsSeen.size || 1;
+  for (const row of categories.values()) row.monthlyAverage = (completeMonthTotals.get(row.category) ?? 0) / monthCount;
 
   return Array.from(categories.values()).sort((a, b) => b.ytd - a.ytd);
 }

@@ -100,10 +100,15 @@ export async function getOutstandingBills(): Promise<XeroInvoice[]> {
  * what Xero's own P&L report shows. Scoped to trailing N months like
  * getSpendTransactions, not the full ~9,000-record AP history - and PAID
  * bills are included here (unlike getOutstandingBills) since opex reporting
- * cares about what was actually spent, not just what's still owed. */
+ * cares about what was actually spent, not just what's still owed.
+ *
+ * The cutoff is the 1st of the month N months back, not N months back from
+ * today's exact day - a day-based cutoff lands mid-month, producing a
+ * near-empty "month" at the start of the window (e.g. only the last 3 days
+ * of a month) that understates any monthly average computed over it. */
 export async function getBillsForOpex(monthsBack = 14): Promise<XeroInvoice[]> {
-  const since = new Date();
-  since.setMonth(since.getMonth() - monthsBack);
+  const now = new Date();
+  const since = new Date(now.getFullYear(), now.getMonth() - monthsBack, 1);
   const where = `Type=="ACCPAY" AND Status!="VOIDED" AND Status!="DELETED" AND Date >= DateTime(${since.getFullYear()},${since.getMonth() + 1},${since.getDate()})`;
   return paginateInvoices(where);
 }
@@ -162,10 +167,11 @@ export async function getExpenseAccounts(): Promise<XeroAccount[]> {
 }
 
 /** Spend-side bank transactions (money out), trailing N months - enough for
- * YTD + a monthly-average opex projection without pulling the full ledger. */
+ * YTD + a monthly-average opex projection without pulling the full ledger.
+ * Cutoff aligned to a calendar-month boundary - see getBillsForOpex. */
 export async function getSpendTransactions(monthsBack = 14, maxPages = 50): Promise<XeroBankTransaction[]> {
-  const since = new Date();
-  since.setMonth(since.getMonth() - monthsBack);
+  const now = new Date();
+  const since = new Date(now.getFullYear(), now.getMonth() - monthsBack, 1);
   const where = `Type=="SPEND" AND Status=="AUTHORISED" AND Date >= DateTime(${since.getFullYear()},${since.getMonth() + 1},${since.getDate()})`;
   const all: XeroBankTransaction[] = [];
   for (let page = 1; page <= maxPages; page++) {
