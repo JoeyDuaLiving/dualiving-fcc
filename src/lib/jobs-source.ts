@@ -4,6 +4,7 @@ import { db } from "@/db/client";
 import { bills, invoices, jobInvoicePayments, jobs, purchaseOrders, syncRuns } from "@/db/schema";
 import type { BuildxactJobInvoice, BuildxactPurchaseOrder } from "@/integrations/buildxact/types";
 import type { XeroInvoice } from "@/integrations/xero/types";
+import type { ManualStageRow } from "@/lib/manual-stages-source";
 import type { Job, JobStatus } from "@/types";
 
 // ---------------------------------------------------------------------------
@@ -168,6 +169,25 @@ export interface LiveJobsCashPositionsResult {
   rows: LiveJobCashPositionRow[];
   source: "live" | "unavailable";
   error?: string;
+}
+
+/** Remaining revenue not yet received in cash, across active jobs - same
+ * "revised revenue - cash received" definition as the mock engine's
+ * confirmedFutureRevenue(), using contractValue + approvedVariations as
+ * live's revised-revenue figure (Buildxact doesn't need a separate
+ * forecast-revenue estimate the way cost does). */
+export function liveConfirmedFutureRevenue(rows: LiveJobCashPositionRow[]): number {
+  return rows.reduce((sum, row) => sum + Math.max(0, row.job.contractValue + row.job.approvedVariations - row.cashReceived), 0);
+}
+
+/** Earliest not-yet-invoiced manual payment stage for a job, if any -
+ * mirrors jobCashPosition's "next payment" figure for the mock engine, used
+ * so the live "Jobs consuming the most cash" table doesn't show a
+ * permanently blank column. */
+export function liveNextPayment(row: LiveJobCashPositionRow, manualStagesByJobId: Map<string, ManualStageRow[]>): number | null {
+  const stages = (manualStagesByJobId.get(row.job.id) ?? []).filter((s) => !s.invoiced).sort((a, b) => a.expectedDate.localeCompare(b.expectedDate));
+  if (stages.length === 0) return null;
+  return Math.round((stages[0].percentOfContract / 100) * (row.job.contractValue + row.job.approvedVariations));
 }
 
 /** Same per-job cash-position formula as loadLiveJobDetail below, batched

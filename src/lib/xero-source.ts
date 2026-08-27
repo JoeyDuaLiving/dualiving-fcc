@@ -115,6 +115,32 @@ export function liveTotalOverdue(invoices: LiveInvoice[], minDays = 0): number {
   return invoices.filter((i) => daysOverdue(i.dueDate) > minDays).reduce((s, i) => s + i.amountOutstanding, 0);
 }
 
+export interface LiveYtdRevenueResult {
+  revenue: number;
+  source: "live" | "unavailable";
+}
+
+/** Sum of Xero AR invoice amounts issued this calendar year, regardless of
+ * paid/outstanding status - loadLiveReceivables() above only covers
+ * invoices still owed, which understates true YTD revenue once anything's
+ * been paid. */
+export async function liveYtdRevenue(): Promise<LiveYtdRevenueResult> {
+  try {
+    const rows = await db
+      .select({ amount: invoicesTable.amount, issueDate: invoicesTable.issueDate })
+      .from(invoicesTable)
+      .where(eq(invoicesTable.source, "xero"));
+    if (rows.length === 0) return { revenue: 0, source: "unavailable" };
+    const currentYear = TODAY.slice(0, 4);
+    const revenue = rows
+      .filter((r) => r.issueDate && r.issueDate.toISOString().slice(0, 4) === currentYear)
+      .reduce((s, r) => s + r.amount, 0);
+    return { revenue, source: "live" };
+  } catch {
+    return { revenue: 0, source: "unavailable" };
+  }
+}
+
 export interface LiveBill {
   id: string;
   billNumber: string;

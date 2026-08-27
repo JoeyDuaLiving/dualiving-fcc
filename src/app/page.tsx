@@ -25,27 +25,33 @@ import {
   ytdFinancials,
 } from "@/lib/calculations";
 import { bankAccounts, settings } from "@/lib/mock-data";
-import { loadLiveBankSummary, loadLiveReceivables, loadLivePayables } from "@/lib/xero-source";
+import { loadLiveBankSummary, loadLiveReceivables, loadLivePayables, liveAverageMonthlyOpex, liveYtdRevenue } from "@/lib/xero-source";
 import { buildLiveForecastItems, generateLiveAlerts, liveCashRequiredToFinish, liveTotalActiveJobCashRequirement, liveTotalWip, loadLiveForecastData } from "@/lib/live-forecast";
+import { liveConfirmedFutureRevenue, liveNextPayment } from "@/lib/jobs-source";
+import { liveWeightedPipelineValue } from "@/lib/ghl-source";
+import { loadReconciliation } from "@/lib/reconciliation-source";
 
 export const dynamic = "force-dynamic";
 
 export default async function DashboardPage() {
-  const [liveBank, liveReceivables, livePayables, liveForecast] = await Promise.all([
+  const [liveBank, liveReceivables, livePayables, liveForecast, liveRevenue, reconciliation] = await Promise.all([
     loadLiveBankSummary(),
     loadLiveReceivables(),
     loadLivePayables(),
     loadLiveForecastData(),
+    liveYtdRevenue(),
+    loadReconciliation(),
   ]);
   const cashIsLive = liveBank.source === "live";
   const arIsLive = liveReceivables.source === "live";
   const apIsLive = livePayables.source === "live";
   const forecastIsLive = liveForecast.source === "live" && liveForecast.data !== null;
+  const reconciliationRows = reconciliation.source === "live" ? reconciliation.rows : [];
 
   const items = forecastIsLive ? buildLiveForecastItems(liveForecast.data!) : buildForecastItems();
   const daily = cashForecastSeries(items, 90, forecastIsLive ? liveForecast.data!.currentCashBalance : undefined);
   const summary = summarizeForecast(daily, settings.minimumCashBuffer);
-  const alerts = (forecastIsLive ? generateLiveAlerts(liveForecast.data!, summary) : generateAlerts()).slice(0, 5);
+  const alerts = (forecastIsLive ? generateLiveAlerts(liveForecast.data!, summary, reconciliationRows) : generateAlerts()).slice(0, 5);
 
   const operatingBalance = bankAccounts.find((b) => b.id === "bank-1")?.balance ?? 0;
   const bankBalance = cashIsLive ? liveBank.totalBalance : currentCashBalance();
@@ -55,13 +61,28 @@ export default async function DashboardPage() {
   const apCount = apIsLive ? livePayables.bills.length : outstandingBills().length;
   const wip = forecastIsLive ? liveTotalWip(liveForecast.data!.jobRows) : totalWip();
   const cashRequired = forecastIsLive ? liveTotalActiveJobCashRequirement(liveForecast.data!.jobRows) : totalActiveJobCashRequirement();
+
+  // Live mode has no computed blended margin (would need full invoice-level
+  // cost attribution, not just outstanding balances) - uses the management
+  // target margin instead, same convention as the Expenses page.
   const ytd = ytdFinancials();
+  const revenueYtd = forecastIsLive && liveRevenue.source === "live" ? liveRevenue.revenue : ytd.revenue;
+  const marginPercent = forecastIsLive ? settings.marginTargetPercent : ytd.marginPercent || 25;
+  const grossProfitYtd = forecastIsLive ? revenueYtd * (marginPercent / 100) : ytd.grossProfit;
+  const monthlyOpex = forecastIsLive ? liveAverageMonthlyOpex(liveForecast.data!.operatingExpenses) : averageMonthlyOpex();
+  const runwayMonths = forecastIsLive ? (monthlyOpex > 0 ? bankBalance / monthlyOpex : Infinity) : simpleCashRunwayMonths();
+  const confirmedRevenue = forecastIsLive ? liveConfirmedFutureRevenue(liveForecast.data!.jobRows) : confirmedFutureRevenue();
+  const weightedPipeline = forecastIsLive ? liveWeightedPipelineValue(liveForecast.data!.opportunities) : weightedPipelineValue();
 
   const topCashRiskJobs = forecastIsLive
     ? liveForecast
         .data!.jobRows.map((row) => ({
           job: row.job,
-          pos: { remainingCost: row.job.committedCost + row.job.remainingForecastCost, nextPaymentAmount: null as number | null, cashRequiredToFinish: liveCashRequiredToFinish(row) },
+          pos: {
+            remainingCost: row.job.committedCost + row.job.remainingForecastCost,
+            nextPaymentAmount: liveNextPayment(row, liveForecast.data!.manualStagesByJobId),
+            cashRequiredToFinish: liveCashRequiredToFinish(row),
+          },
         }))
         .filter((x) => x.pos.cashRequiredToFinish > 0)
         .sort((a, b) => b.pos.cashRequiredToFinish - a.pos.cashRequiredToFinish)
@@ -175,12 +196,17 @@ export default async function DashboardPage() {
 
       {/* KPI grid */}
       <div className="grid grid-cols-2 md:grid-cols-4 gap-3 mb-6">
-        <StatCard label="Revenue YTD" value={formatAUD(ytd.revenue, { compact: true })} href="/jobs" />
-        <StatCard label="Gross profit YTD" value={formatAUD(ytd.grossProfit, { compact: true })} sub={`${ytd.marginPercent.toFixed(1)}% margin`} href="/jobs" />
-        <StatCard label="Monthly OPEX" value={formatAUD(averageMonthlyOpex(), { compact: true })} sub="Avg of last 2 months" href="/expenses" />
-        <StatCard label="Cash runway" value={simpleCashRunwayMonths() === Infinity ? "N/A" : `${simpleCashRunwayMonths().toFixed(1)} mo`} sub="Cash / avg monthly burn" href="/expenses" />
-        <StatCard label="Confirmed future revenue" value={formatAUD(confirmedFutureRevenue(), { compact: true })} sub="Remaining active-job revenue" href="/jobs" />
-        <StatCard label="Weighted pipeline" value={formatAUD(weightedPipelineValue(), { compact: true })} sub="GHL, probability-weighted" href="/pipeline" tone="default" />
+        <StatCard label="Revenue YTD" value={formatAUD(revenueYtd, { compact: true })} sub={forecastIsLive ? "Xero, live" : undefined} href="/jobs" />
+        <StatCard
+          label="Gross profit YTD"
+          value={formatAUD(grossProfitYtd, { compact: true })}
+          sub={forecastIsLive ? `${marginPercent.toFixed(1)}% management target margin` : `${marginPercent.toFixed(1)}% margin`}
+          href="/jobs"
+        />
+        <StatCard label="Monthly OPEX" value={formatAUD(monthlyOpex, { compact: true })} sub={forecastIsLive ? "Xero, live avg" : "Avg of last 2 months"} href="/expenses" />
+        <StatCard label="Cash runway" value={runwayMonths === Infinity ? "N/A" : `${runwayMonths.toFixed(1)} mo`} sub="Cash / avg monthly burn" href="/expenses" />
+        <StatCard label="Confirmed future revenue" value={formatAUD(confirmedRevenue, { compact: true })} sub="Remaining active-job revenue" href="/jobs" />
+        <StatCard label="Weighted pipeline" value={formatAUD(weightedPipeline, { compact: true })} sub="GHL, probability-weighted" href="/pipeline" tone="default" />
         <StatCard label="Active jobs" value={String(forecastIsLive ? liveForecast.data!.jobRows.length : activeJobs.length)} sub="In progress or on hold" href="/jobs" />
         <StatCard label="Jobs needing cash" value={String(topCashRiskJobs.length)} tone={topCashRiskJobs.length > 0 ? "warn" : "good"} href="/jobs" />
       </div>
@@ -209,7 +235,7 @@ export default async function DashboardPage() {
                   <tr key={job.id} className="hover:bg-slate-900/60">
                     <td className="py-2.5">
                       <Link href={`/jobs/${job.id}`} className="text-brand-400 hover:text-brand-300 font-medium">
-                        {job.id}
+                        {job.jobNumber}
                       </Link>
                     </td>
                     <td className="py-2.5 text-slate-300">{job.client}</td>

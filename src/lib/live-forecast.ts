@@ -16,6 +16,7 @@ import {
 import { liveExpectedDeposit, loadLiveOpenOpportunities, type LiveOpportunity } from "./ghl-source";
 import { loadManualStages, type ManualStageRow } from "./manual-stages-source";
 import { loadQuotedJobs, type QuotedJobDTO } from "./quoted-jobs-source";
+import { loadReconciliation, type JobReconciliationRow } from "./reconciliation-source";
 
 // ---------------------------------------------------------------------------
 // Live equivalent of the forecast/alerts engine in calculations.ts, built
@@ -340,7 +341,11 @@ export function buildLiveForecastItems(data: LiveForecastData): ForecastItem[] {
   return items.sort((a, b) => a.date.localeCompare(b.date));
 }
 
-export function generateLiveAlerts(data: LiveForecastData, forecastSummary: CashForecastSummary): ManagementAlert[] {
+export function generateLiveAlerts(
+  data: LiveForecastData,
+  forecastSummary: CashForecastSummary,
+  reconciliationRows: JobReconciliationRow[] = []
+): ManagementAlert[] {
   const alerts: ManagementAlert[] = [];
 
   if (forecastSummary.bufferBreach) {
@@ -435,6 +440,32 @@ export function generateLiveAlerts(data: LiveForecastData, forecastSummary: Cash
     });
   }
 
+  // Buildxact-vs-Xero mismatches from Reconciliation - same >$5k critical
+  // threshold used on that page itself, so an alert here means the same
+  // thing it would mean there.
+  for (const row of reconciliationRows) {
+    if (row.costFlag) {
+      alerts.push({
+        id: `live-alert-reconciliation-cost-${row.jobId}`,
+        severity: Math.abs(row.costVariance) > 5000 ? "critical" : "warning",
+        title: `${row.jobNumber} cost variance vs Xero`,
+        description: row.costFlag,
+        jobId: row.jobId,
+        href: `/jobs/${row.jobId}`,
+      });
+    }
+    if (row.revenueFlag) {
+      alerts.push({
+        id: `live-alert-reconciliation-revenue-${row.jobId}`,
+        severity: Math.abs(row.revenueVariance) > 5000 ? "critical" : "warning",
+        title: `${row.jobNumber} revenue variance vs Xero`,
+        description: row.revenueFlag,
+        jobId: row.jobId,
+        href: `/jobs/${row.jobId}`,
+      });
+    }
+  }
+
   const severityOrder: Record<ManagementAlert["severity"], number> = { critical: 0, warning: 1, positive: 2 };
   return alerts.sort((a, b) => severityOrder[a.severity] - severityOrder[b.severity]);
 }
@@ -449,12 +480,13 @@ export interface LiveAlertsResult {
  * TopBar, Alerts page) without re-running the load-items-summarize pipeline
  * themselves. */
 export async function computeLiveAlerts(): Promise<LiveAlertsResult> {
-  const live = await loadLiveForecastData();
+  const [live, reconciliation] = await Promise.all([loadLiveForecastData(), loadReconciliation()]);
   if (live.source !== "live" || !live.data) {
     return { alerts: [], source: "unavailable", error: live.error };
   }
   const items = buildLiveForecastItems(live.data);
   const daily = cashForecastSeries(items, 90, live.data.currentCashBalance);
   const summary = summarizeForecast(daily, settings.minimumCashBuffer);
-  return { alerts: generateLiveAlerts(live.data, summary), source: "live" };
+  const reconciliationRows = reconciliation.source === "live" ? reconciliation.rows : [];
+  return { alerts: generateLiveAlerts(live.data, summary, reconciliationRows), source: "live" };
 }

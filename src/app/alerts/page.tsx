@@ -21,7 +21,7 @@ export default async function AlertsPage() {
     <div>
       <PageHeader
         title="Alerts"
-        description="Automatically generated from cash forecasts, job costing and receivables - not a manual checklist."
+        description="Automatically generated from cash forecasts, job costing, receivables and Buildxact/Xero reconciliation - not a manual checklist."
         action={isLive ? <StatusPill tone="good">Live</StatusPill> : undefined}
       />
 
