@@ -205,9 +205,8 @@ export function buildLiveForecastItems(data: LiveForecastData): ForecastItem[] {
   }
 
   // Forecast inflows: quoted jobs close to starting, not yet a real
-  // Buildxact job ("Q1280" style reference). No jobId - there's no
-  // jobs.id row to link to yet, and no cost estimate, since none was
-  // entered and none should be guessed.
+  // Buildxact job ("Q1280" style reference). No jobId - there's no jobs.id
+  // row to link to yet.
   for (const quoted of data.quotedJobs) {
     for (const stage of quoted.stages) {
       items.push({
@@ -222,6 +221,44 @@ export function buildLiveForecastItems(data: LiveForecastData): ForecastItem[] {
         confidence: "forecast",
         status: stage.triggerDescription || "Quoted - not yet a Buildxact job",
         description: `${quoted.reference} ${quoted.client} - ${stage.label} (quoted, not yet a job)`,
+      });
+    }
+  }
+
+  // Forecast outflows: COGS for the same quoted jobs, per business
+  // direction (2026-08-28) - 25% of estimated value 2wk after the
+  // Manufacturing invoice, another 25% 6wk after that, and a final 25% 2wk
+  // after the Final invoice. That's 75% of estimated value as cost,
+  // implying a 25% margin - consistent with the marginTargetPercent default
+  // used for real Buildxact jobs. Stages are matched by label text rather
+  // than a fixed index, since a quote's stages can be edited via the API;
+  // a quoted job that's had its Manufacturing or Final stage renamed or
+  // removed just gets no COGS items rather than a guessed date.
+  for (const quoted of data.quotedJobs) {
+    const manufacturing = quoted.stages.find((s) => s.label.toLowerCase().includes("manufactur"));
+    const final = quoted.stages.find((s) => s.label.toLowerCase().includes("final"));
+    if (!manufacturing || !final) continue;
+
+    const cogsAmount = Math.round(0.25 * quoted.estimatedContractValue);
+    const payment1Date = addDays(manufacturing.expectedDate, 14);
+    const cogsStages = [
+      { label: "COGS payment 1", date: payment1Date, status: "2wk after Manufacturing invoice" },
+      { label: "COGS payment 2", date: addDays(payment1Date, 42), status: "6wk after COGS payment 1" },
+      { label: "COGS payment 3", date: addDays(final.expectedDate, 14), status: "2wk after Final invoice" },
+    ];
+    for (const [i, cogs] of cogsStages.entries()) {
+      items.push({
+        id: `live-fc-quoted-cogs-${quoted.id}-${i}`,
+        source: "manual",
+        sourceId: quoted.id,
+        date: clampToday(cogs.date),
+        amount: cogsAmount,
+        direction: "outflow",
+        category: "job_cost",
+        party: quoted.client,
+        confidence: "forecast",
+        status: cogs.status,
+        description: `${quoted.reference} ${quoted.client} - ${cogs.label} (quoted, not yet a job)`,
       });
     }
   }
