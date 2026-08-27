@@ -82,9 +82,13 @@ export function jobCosting(job: Job): JobCosting {
   const revisedRevenue = job.contractValue + job.approvedVariations;
   const forecastFinalCost = job.actualCost + job.committedCost + job.remainingForecastCost;
   const originalBudgetGrossProfit = job.originalBudgetRevenue - job.originalBudgetCost;
-  const originalBudgetMarginPercent = (originalBudgetGrossProfit / job.originalBudgetRevenue) * 100;
+  // Guard against real $0-contract-value records (e.g. Buildxact "STOCK"
+  // placeholder jobs, not actual client contracts) producing a meaningless
+  // -Infinity/NaN margin - 0% and "not below target" rather than a nonsense
+  // number, since there's no revenue to have a margin against.
+  const originalBudgetMarginPercent = job.originalBudgetRevenue > 0 ? (originalBudgetGrossProfit / job.originalBudgetRevenue) * 100 : 0;
   const forecastGrossProfit = revisedRevenue - forecastFinalCost;
-  const forecastMarginPercent = (forecastGrossProfit / revisedRevenue) * 100;
+  const forecastMarginPercent = revisedRevenue > 0 ? (forecastGrossProfit / revisedRevenue) * 100 : 0;
 
   return {
     jobId: job.id,
@@ -98,7 +102,7 @@ export function jobCosting(job: Job): JobCosting {
     forecastMarginPercent,
     grossProfitVariance: forecastGrossProfit - originalBudgetGrossProfit,
     marginVariancePoints: forecastMarginPercent - originalBudgetMarginPercent,
-    belowTarget: forecastMarginPercent < job.marginTargetPercent,
+    belowTarget: revisedRevenue > 0 && forecastMarginPercent < job.marginTargetPercent,
   };
 }
 

@@ -1,16 +1,18 @@
 import "server-only";
 import { eq, sql } from "drizzle-orm";
 import { db } from "@/db/client";
-import { bankAccounts, bills, customers, invoices, jobs, suppliers, syncErrors, syncRuns } from "@/db/schema";
+import { bankAccounts, bills, customers, invoices, jobs, operatingExpenses, suppliers, syncErrors, syncRuns } from "@/db/schema";
 import {
   getBankAccounts,
   getBankSummary,
   getContacts,
+  getExpenseAccounts,
   getInvoices,
   getOutstandingBills,
+  getSpendTransactions,
 } from "@/integrations/xero/accounting";
 import { parseXeroDate } from "@/integrations/xero/mappers";
-import type { XeroContact, XeroInvoice } from "@/integrations/xero/types";
+import type { XeroAccount, XeroBankTransaction, XeroContact, XeroInvoice } from "@/integrations/xero/types";
 
 // ---------------------------------------------------------------------------
 // Xero -> Postgres sync. Same upsert-by-(source,sourceId) approach as the
@@ -126,6 +128,16 @@ export async function syncXero(): Promise<XeroSyncResult> {
       recordsUpdated += updated;
     } catch (err) {
       await logError(undefined, `Bills: ${err instanceof Error ? err.message : String(err)}`);
+    }
+
+    // --- Operating expenses (spend transactions, DIRECTCOSTS excluded) ----
+    try {
+      const [expenseAccounts, spendTxns] = await Promise.all([getExpenseAccounts(), getSpendTransactions()]);
+      const { imported, updated } = await upsertOperatingExpenses(expenseAccounts, spendTxns);
+      recordsImported += imported;
+      recordsUpdated += updated;
+    } catch (err) {
+      await logError(undefined, `Operating expenses: ${err instanceof Error ? err.message : String(err)}`);
     }
   } catch (err) {
     await logError(undefined, `Sync aborted: ${err instanceof Error ? err.message : String(err)}`);
@@ -293,6 +305,101 @@ async function upsertBills(apBills: XeroInvoice[], supplierIdBySourceId: Map<str
       })
       .returning({ wasNew: sql<boolean>`(xmax = 0)` });
     for (const r of rows) {
+      if (r.wasNew) imported++;
+      else updated++;
+    }
+  }
+
+  return { imported, updated };
+}
+
+interface OperatingExpenseRow {
+  source: string;
+  sourceId: string;
+  category: string;
+  classification: "fixed" | "variable";
+  description: string | null;
+  amount: number;
+  date: Date;
+  recurring: boolean;
+  raw: unknown;
+}
+
+async function upsertOperatingExpenses(expenseAccounts: XeroAccount[], spendTxns: XeroBankTransaction[]) {
+  let imported = 0;
+  let updated = 0;
+
+  const accountByCode = new Map(expenseAccounts.filter((a) => a.Code).map((a) => [a.Code, a]));
+  const rows: OperatingExpenseRow[] = [];
+  const monthsByCategory = new Map<string, Set<string>>();
+
+  for (const txn of spendTxns) {
+    const date = parseXeroDate(txn.Date);
+    if (!date) continue;
+    const monthKey = date.toISOString().slice(0, 7);
+
+    for (const line of txn.LineItems ?? []) {
+      const account = line.AccountCode ? accountByCode.get(line.AccountCode) : undefined;
+      // Job costs (DIRECTCOSTS) are already captured via Buildxact's
+      // actualCost/committedCost - counting them again here would
+      // double-count the same spend under a different category.
+      if (!account || account.Type === "DIRECTCOSTS") continue;
+
+      const category = account.Name;
+      rows.push({
+        source: "xero",
+        sourceId: `${txn.BankTransactionID}-${line.LineItemID}`,
+        category,
+        // This tenant barely uses Xero's OVERHEADS account type (3 of 126
+        // expense accounts - see accounting.ts note), so this mostly
+        // defaults to "variable" rather than a real per-category judgment.
+        classification: account.Type === "OVERHEADS" ? "fixed" : "variable",
+        description: line.Description ?? null,
+        amount: line.LineAmount,
+        date,
+        recurring: false, // filled in below once every category's spread across months is known
+        raw: { transaction: txn, lineItem: line },
+      });
+
+      if (!monthsByCategory.has(category)) monthsByCategory.set(category, new Set());
+      monthsByCategory.get(category)!.add(monthKey);
+    }
+  }
+
+  // A category counts as recurring if it shows spend in at least 2 of the
+  // trailing 3 calendar months - a real, data-driven signal for which
+  // categories are worth projecting forward, not a guess.
+  const now = new Date();
+  const recentMonths = new Set<string>();
+  for (let i = 0; i < 3; i++) {
+    recentMonths.add(new Date(now.getFullYear(), now.getMonth() - i, 1).toISOString().slice(0, 7));
+  }
+  const recurringCategories = new Set(
+    [...monthsByCategory.entries()]
+      .filter(([, months]) => [...months].filter((m) => recentMonths.has(m)).length >= 2)
+      .map(([category]) => category)
+  );
+  for (const row of rows) row.recurring = recurringCategories.has(row.category);
+
+  for (let i = 0; i < rows.length; i += BATCH_SIZE) {
+    const batch = rows.slice(i, i + BATCH_SIZE);
+    const result = await db
+      .insert(operatingExpenses)
+      .values(batch)
+      .onConflictDoUpdate({
+        target: [operatingExpenses.source, operatingExpenses.sourceId],
+        set: {
+          category: sql`excluded.category`,
+          classification: sql`excluded.classification`,
+          description: sql`excluded.description`,
+          amount: sql`excluded.amount`,
+          date: sql`excluded.date`,
+          recurring: sql`excluded.recurring`,
+          raw: sql`excluded.raw`,
+        },
+      })
+      .returning({ wasNew: sql<boolean>`(xmax = 0)` });
+    for (const r of result) {
       if (r.wasNew) imported++;
       else updated++;
     }

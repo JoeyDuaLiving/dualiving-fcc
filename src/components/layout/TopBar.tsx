@@ -1,19 +1,21 @@
 import Link from "next/link";
 import { BellRing } from "lucide-react";
 import { generateAlerts } from "@/lib/calculations";
+import { computeLiveAlerts } from "@/lib/live-forecast";
 import { TODAY } from "@/lib/mock-data";
 import { formatDateAU } from "@/lib/format";
 import { getLastSyncStatus, relativeTimeFromNow } from "@/lib/sync-status";
 import { SyncNowButton } from "./SyncNowButton";
 
 export async function TopBar() {
-  const alerts = generateAlerts();
-  const criticalCount = alerts.filter((a) => a.severity === "critical").length;
-  const [buildxactSync, xeroSync, ghlSync] = await Promise.all([
+  const [liveAlerts, buildxactSync, xeroSync, ghlSync] = await Promise.all([
+    computeLiveAlerts(),
     getLastSyncStatus("buildxact"),
     getLastSyncStatus("xero"),
     getLastSyncStatus("ghl"),
   ]);
+  const alerts = liveAlerts.source === "live" ? liveAlerts.alerts : generateAlerts();
+  const criticalCount = alerts.filter((a) => a.severity === "critical").length;
 
   return (
     <header className="sticky top-0 z-10 h-16 border-b border-slate-800 bg-slate-950/95 backdrop-blur flex items-center justify-between px-4 lg:px-6">

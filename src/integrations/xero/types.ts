@@ -55,6 +55,13 @@ export interface XeroInvoice {
   UpdatedDateUTCString?: string;
 }
 
+export interface XeroLineItem {
+  LineItemID: string;
+  Description?: string;
+  AccountCode?: string;
+  LineAmount: number;
+}
+
 export interface XeroBankTransaction {
   BankTransactionID: string;
   BankAccount: { AccountID: string; Code?: string; Name: string };
@@ -66,6 +73,7 @@ export interface XeroBankTransaction {
   Status: string;
   Total: number;
   CurrencyCode?: string;
+  LineItems?: XeroLineItem[];
 }
 
 export interface XeroPagination {

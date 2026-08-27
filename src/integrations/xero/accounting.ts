@@ -119,3 +119,32 @@ export async function getRecentBankTransactions(sinceDaysAgo = 90, maxPages = 20
   }
   return all;
 }
+
+/** Confirmed live 2026-08-27: this tenant's chart of accounts has 126
+ * Class=="EXPENSE" accounts, split Type=="DIRECTCOSTS" (49, e.g. "Cost of
+ * Sales", "COGS ...") / "EXPENSE" (74, general) / "OVERHEADS" (3 only -
+ * "ATO - GIC", "Fines", "Workers Comp Payments"; this tenant doesn't use
+ * Xero's OVERHEADS type for the usual rent/insurance/subscriptions style
+ * accounts). DIRECTCOSTS accounts are excluded from the opex sync entirely
+ * (see sync/xero.ts) since they're job costs already captured via
+ * Buildxact's actualCost/committedCost - counting them again here would
+ * double-count the same spend under two different categories. */
+export async function getExpenseAccounts(): Promise<XeroAccount[]> {
+  const result = await xeroGet<XeroAccountsResponse>("/Accounts", { where: 'Class=="EXPENSE"' });
+  return result.Accounts;
+}
+
+/** Spend-side bank transactions (money out), trailing N months - enough for
+ * YTD + a monthly-average opex projection without pulling the full ledger. */
+export async function getSpendTransactions(monthsBack = 14, maxPages = 50): Promise<XeroBankTransaction[]> {
+  const since = new Date();
+  since.setMonth(since.getMonth() - monthsBack);
+  const where = `Type=="SPEND" AND Status=="AUTHORISED" AND Date >= DateTime(${since.getFullYear()},${since.getMonth() + 1},${since.getDate()})`;
+  const all: XeroBankTransaction[] = [];
+  for (let page = 1; page <= maxPages; page++) {
+    const result = await xeroGet<XeroBankTransactionsResponse>("/BankTransactions", { where, order: "Date DESC", page: String(page) });
+    all.push(...result.BankTransactions);
+    if (!result.pagination || page >= result.pagination.pageCount) break;
+  }
+  return all;
+}

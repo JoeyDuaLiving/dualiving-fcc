@@ -2,11 +2,17 @@ import Link from "next/link";
 import { PageHeader } from "@/components/shared/PageHeader";
 import { StatCard } from "@/components/shared/StatCard";
 import { Card } from "@/components/shared/Card";
-import { SeverityBadge } from "@/components/shared/Badges";
+import { SeverityBadge, StatusPill } from "@/components/shared/Badges";
 import { generateAlerts } from "@/lib/calculations";
+import { computeLiveAlerts } from "@/lib/live-forecast";
 
-export default function AlertsPage() {
-  const alerts = generateAlerts();
+export const dynamic = "force-dynamic";
+
+export default async function AlertsPage() {
+  const live = await computeLiveAlerts();
+  const isLive = live.source === "live";
+  const alerts = isLive ? live.alerts : generateAlerts();
+
   const critical = alerts.filter((a) => a.severity === "critical");
   const warning = alerts.filter((a) => a.severity === "warning");
   const positive = alerts.filter((a) => a.severity === "positive");
@@ -16,7 +22,14 @@ export default function AlertsPage() {
       <PageHeader
         title="Alerts"
         description="Automatically generated from cash forecasts, job costing and receivables - not a manual checklist."
+        action={isLive ? <StatusPill tone="good">Live</StatusPill> : undefined}
       />
+
+      {!isLive && live.error && (
+        <div className="mb-6 rounded-lg border border-slate-700 bg-slate-900/60 px-4 py-3 text-sm text-slate-400">
+          {live.error} Showing Phase 1 mock data in the meantime.
+        </div>
+      )}
 
       <div className="grid grid-cols-3 gap-3 mb-6">
         <StatCard label="Critical" value={String(critical.length)} tone={critical.length > 0 ? "bad" : "good"} />

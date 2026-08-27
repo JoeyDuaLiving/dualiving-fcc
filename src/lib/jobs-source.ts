@@ -1,5 +1,5 @@
 import "server-only";
-import { desc, eq } from "drizzle-orm";
+import { desc, eq, inArray } from "drizzle-orm";
 import { db } from "@/db/client";
 import { jobInvoicePayments, jobs, purchaseOrders, syncRuns } from "@/db/schema";
 import type { BuildxactJobInvoice, BuildxactPurchaseOrder } from "@/integrations/buildxact/types";
@@ -83,6 +83,64 @@ export async function loadLiveJobsList(): Promise<LiveJobsListResult> {
     };
   } catch (err) {
     return { jobs: [], source: "unavailable", error: err instanceof Error ? err.message : "Unknown error reading the database" };
+  }
+}
+
+export interface LiveJobCashPositionRow {
+  job: Job;
+  amountInvoicedToDate: number;
+  cashReceived: number;
+  cashOutstanding: number;
+  wip: number;
+}
+
+export interface LiveJobsCashPositionsResult {
+  rows: LiveJobCashPositionRow[];
+  source: "live" | "unavailable";
+  error?: string;
+}
+
+/** Same per-job cash-position formula as loadLiveJobDetail below, batched
+ * across every active (not "complete") job in 2 queries instead of N+1 -
+ * built for the live forecast engine, which needs this for every active job
+ * at once rather than one job's detail page. */
+export async function loadLiveActiveJobsCashPositions(): Promise<LiveJobsCashPositionsResult> {
+  try {
+    const jobRows = await db.select().from(jobs).where(eq(jobs.source, "buildxact"));
+    const activeRows = jobRows.filter((r) => r.status !== "complete");
+    if (activeRows.length === 0) {
+      return { rows: [], source: jobRows.length === 0 ? "unavailable" : "live" };
+    }
+
+    const jobIds = activeRows.map((r) => r.id);
+    const invRows = await db
+      .select()
+      .from(jobInvoicePayments)
+      .where(inArray(jobInvoicePayments.jobId, jobIds));
+
+    const byJob = new Map<string, typeof invRows>();
+    for (const inv of invRows) {
+      if (!inv.jobId) continue;
+      if (!byJob.has(inv.jobId)) byJob.set(inv.jobId, []);
+      byJob.get(inv.jobId)!.push(inv);
+    }
+
+    const rows: LiveJobCashPositionRow[] = activeRows.map((jobRow) => {
+      const jobInvoices = byJob.get(jobRow.id) ?? [];
+      const amountInvoicedToDate = jobInvoices.reduce((s, r) => s + r.totalIncTax, 0);
+      const cashReceived = jobInvoices.filter((r) => r.status === "Received").reduce((s, r) => s + r.totalIncTax, 0);
+      return {
+        job: dbJobToJob(jobRow),
+        amountInvoicedToDate,
+        cashReceived,
+        cashOutstanding: amountInvoicedToDate - cashReceived,
+        wip: Math.max(0, jobRow.actualCost + jobRow.committedCost - amountInvoicedToDate),
+      };
+    });
+
+    return { rows, source: "live" };
+  } catch (err) {
+    return { rows: [], source: "unavailable", error: err instanceof Error ? err.message : "Unknown error reading the database" };
   }
 }
 

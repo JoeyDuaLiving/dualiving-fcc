@@ -1,7 +1,7 @@
 import "server-only";
 import { eq, gt } from "drizzle-orm";
 import { db } from "@/db/client";
-import { bankAccounts, bills as billsTable, invoices as invoicesTable, jobs } from "@/db/schema";
+import { bankAccounts, bills as billsTable, invoices as invoicesTable, jobs, operatingExpenses } from "@/db/schema";
 import type { XeroInvoice } from "@/integrations/xero/types";
 import { ageingBucket, daysOverdue, type AgeingBucket } from "@/lib/calculations";
 import { daysBetween } from "@/lib/format";
@@ -172,4 +172,43 @@ export async function loadLivePayables(): Promise<LivePayablesResult> {
 
 export function liveApUpcomingWithin(bills: LiveBill[], days: number): number {
   return bills.filter((b) => daysBetween(TODAY, b.dueDate) <= days).reduce((s, b) => s + b.amountOutstanding, 0);
+}
+
+export interface LiveOperatingExpense {
+  category: string;
+  classification: "fixed" | "variable";
+  description: string | null;
+  amount: number;
+  date: string; // YYYY-MM-DD
+  recurring: boolean;
+}
+
+export interface LiveOperatingExpensesResult {
+  expenses: LiveOperatingExpense[];
+  source: "live" | "unavailable";
+  error?: string;
+}
+
+/** Populated by src/sync/xero.ts's opex step (spend transactions, DIRECTCOSTS
+ * accounts excluded - see that file for why). */
+export async function loadLiveOperatingExpenses(): Promise<LiveOperatingExpensesResult> {
+  try {
+    const rows = await db.select().from(operatingExpenses).where(eq(operatingExpenses.source, "xero"));
+    if (rows.length === 0) {
+      return { expenses: [], source: "unavailable", error: "No Xero operating expenses synced yet." };
+    }
+    return {
+      expenses: rows.map((r) => ({
+        category: r.category,
+        classification: r.classification as "fixed" | "variable",
+        description: r.description,
+        amount: r.amount,
+        date: toDateOnly(r.date),
+        recurring: r.recurring,
+      })),
+      source: "live",
+    };
+  } catch (err) {
+    return { expenses: [], source: "unavailable", error: err instanceof Error ? err.message : "Unknown error reading the database" };
+  }
 }

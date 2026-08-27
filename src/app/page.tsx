@@ -26,23 +26,26 @@ import {
 } from "@/lib/calculations";
 import { bankAccounts, settings } from "@/lib/mock-data";
 import { loadLiveBankSummary, loadLiveReceivables, loadLivePayables } from "@/lib/xero-source";
+import { buildLiveForecastItems, generateLiveAlerts, liveCashRequiredToFinish, liveTotalActiveJobCashRequirement, liveTotalWip, loadLiveForecastData } from "@/lib/live-forecast";
 
 export const dynamic = "force-dynamic";
 
 export default async function DashboardPage() {
-  const alerts = generateAlerts().slice(0, 5);
-  const items = buildForecastItems();
-  const daily = cashForecastSeries(items, 90);
-  const summary = summarizeForecast(daily, settings.minimumCashBuffer);
-
-  const [liveBank, liveReceivables, livePayables] = await Promise.all([
+  const [liveBank, liveReceivables, livePayables, liveForecast] = await Promise.all([
     loadLiveBankSummary(),
     loadLiveReceivables(),
     loadLivePayables(),
+    loadLiveForecastData(),
   ]);
   const cashIsLive = liveBank.source === "live";
   const arIsLive = liveReceivables.source === "live";
   const apIsLive = livePayables.source === "live";
+  const forecastIsLive = liveForecast.source === "live" && liveForecast.data !== null;
+
+  const items = forecastIsLive ? buildLiveForecastItems(liveForecast.data!) : buildForecastItems();
+  const daily = cashForecastSeries(items, 90, forecastIsLive ? liveForecast.data!.currentCashBalance : undefined);
+  const summary = summarizeForecast(daily, settings.minimumCashBuffer);
+  const alerts = (forecastIsLive ? generateLiveAlerts(liveForecast.data!, summary) : generateAlerts()).slice(0, 5);
 
   const operatingBalance = bankAccounts.find((b) => b.id === "bank-1")?.balance ?? 0;
   const bankBalance = cashIsLive ? liveBank.totalBalance : currentCashBalance();
@@ -50,15 +53,24 @@ export default async function DashboardPage() {
   const arCount = arIsLive ? liveReceivables.invoices.length : outstandingInvoices().length;
   const ap = apIsLive ? livePayables.bills.reduce((s, b) => s + b.amountOutstanding, 0) : outstandingBills().reduce((s, b) => s + b.amountOutstanding, 0);
   const apCount = apIsLive ? livePayables.bills.length : outstandingBills().length;
-  const wip = totalWip();
-  const cashRequired = totalActiveJobCashRequirement();
+  const wip = forecastIsLive ? liveTotalWip(liveForecast.data!.jobRows) : totalWip();
+  const cashRequired = forecastIsLive ? liveTotalActiveJobCashRequirement(liveForecast.data!.jobRows) : totalActiveJobCashRequirement();
   const ytd = ytdFinancials();
 
-  const topCashRiskJobs = [...activeJobs]
-    .map((j) => ({ job: j, pos: jobCashPosition(j) }))
-    .filter((x) => x.pos.cashRequiredToFinish > 0)
-    .sort((a, b) => b.pos.cashRequiredToFinish - a.pos.cashRequiredToFinish)
-    .slice(0, 5);
+  const topCashRiskJobs = forecastIsLive
+    ? liveForecast
+        .data!.jobRows.map((row) => ({
+          job: row.job,
+          pos: { remainingCost: row.job.committedCost + row.job.remainingForecastCost, nextPaymentAmount: null as number | null, cashRequiredToFinish: liveCashRequiredToFinish(row) },
+        }))
+        .filter((x) => x.pos.cashRequiredToFinish > 0)
+        .sort((a, b) => b.pos.cashRequiredToFinish - a.pos.cashRequiredToFinish)
+        .slice(0, 5)
+    : [...activeJobs]
+        .map((j) => ({ job: j, pos: jobCashPosition(j) }))
+        .filter((x) => x.pos.cashRequiredToFinish > 0)
+        .sort((a, b) => b.pos.cashRequiredToFinish - a.pos.cashRequiredToFinish)
+        .slice(0, 5);
 
   return (
     <div>
@@ -109,7 +121,7 @@ export default async function DashboardPage() {
       {/* Cash position */}
       <div className="flex items-center gap-2 mb-3">
         <h2 className="text-sm font-semibold text-slate-300">Cash position</h2>
-        {(cashIsLive || arIsLive || apIsLive) && <StatusPill tone="good">Live where connected</StatusPill>}
+        {(cashIsLive || arIsLive || apIsLive || forecastIsLive) && <StatusPill tone="good">Live where connected</StatusPill>}
       </div>
       <div className="grid grid-cols-2 md:grid-cols-4 xl:grid-cols-7 gap-3 mb-6">
         <StatCard label="Current bank balance" value={formatAUD(bankBalance)} tone={cashIsLive && bankBalance < 0 ? "bad" : "default"} sub={cashIsLive ? "Xero, live" : "All accounts"} href="/cash-flow" />
@@ -169,7 +181,7 @@ export default async function DashboardPage() {
         <StatCard label="Cash runway" value={simpleCashRunwayMonths() === Infinity ? "N/A" : `${simpleCashRunwayMonths().toFixed(1)} mo`} sub="Cash / avg monthly burn" href="/expenses" />
         <StatCard label="Confirmed future revenue" value={formatAUD(confirmedFutureRevenue(), { compact: true })} sub="Remaining active-job revenue" href="/jobs" />
         <StatCard label="Weighted pipeline" value={formatAUD(weightedPipelineValue(), { compact: true })} sub="GHL, probability-weighted" href="/pipeline" tone="default" />
-        <StatCard label="Active jobs" value={String(activeJobs.length)} sub="In progress or on hold" href="/jobs" />
+        <StatCard label="Active jobs" value={String(forecastIsLive ? liveForecast.data!.jobRows.length : activeJobs.length)} sub="In progress or on hold" href="/jobs" />
         <StatCard label="Jobs needing cash" value={String(topCashRiskJobs.length)} tone={topCashRiskJobs.length > 0 ? "warn" : "good"} href="/jobs" />
       </div>
 

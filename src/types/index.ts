@@ -132,6 +132,10 @@ export interface Bill {
   jobId?: string;
   supplier: string;
   description: string;
+  /** Free text - Xero's own account/category name for live data, one of the
+   * mock OpexCategory values for Phase 1 mock data. Not a closed enum since
+   * a real chart of accounts has far more categories than the illustrative
+   * mock set. */
   category: string;
   amount: number;
   amountPaid: number;
@@ -164,7 +168,9 @@ export interface OperatingExpense {
   id: string;
   source: "xero";
   sourceId: string;
-  category: OpexCategory;
+  /** Free text - Xero's own chart-of-accounts name for live data, one of
+   * the illustrative OpexCategory values for Phase 1 mock data. */
+  category: string;
   classification: OpexClassification;
   description: string;
   amount: number;
