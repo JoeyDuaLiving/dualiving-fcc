@@ -147,14 +147,18 @@ export async function getRecentBankTransactions(sinceDaysAgo = 90, maxPages = 20
  * double-count the same spend under two different categories.
  *
  * Also confirmed live: this tenant pays wages (~$9-10k/week, real recurring
- * cash out) through Xero Payroll, which posts to "Wages Payable - Payroll" -
- * a Class=="LIABILITY" clearing account (Type "CURRLIAB"), not an EXPENSE
- * account. A cash-flow forecast that only looked at Class=="EXPENSE" would
- * silently miss the single largest recurring cash outflow in the business,
- * so wage/salary/payroll-named accounts are included regardless of Class. */
+ * cash out, weekly as of Aug 2026 - previously a different cadence) and
+ * superannuation through Xero Payroll, which post to "Wages Payable -
+ * Payroll" and "Superannuation Liability" respectively - both
+ * Class=="LIABILITY" clearing accounts (Type "CURRLIAB"), paid out to a
+ * clearing house (SuperChoice, for super), not EXPENSE accounts. A
+ * cash-flow forecast that only looked at Class=="EXPENSE" would silently
+ * miss two of the largest recurring cash outflows in the business, so
+ * wage/salary/payroll/super-named accounts are included regardless of
+ * Class. */
 export async function getExpenseAccounts(): Promise<XeroAccount[]> {
   const result = await xeroGet<XeroAccountsResponse>("/Accounts", {});
-  return result.Accounts.filter((a) => a.Class === "EXPENSE" || /wage|salar|payroll/i.test(a.Name));
+  return result.Accounts.filter((a) => a.Class === "EXPENSE" || /wage|salar|payroll|super/i.test(a.Name));
 }
 
 /** Spend-side bank transactions (money out), trailing N months - enough for
