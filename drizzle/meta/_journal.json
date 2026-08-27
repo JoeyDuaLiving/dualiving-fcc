@@ -15,6 +15,13 @@
       "when": 1787804520086,
       "tag": "0001_gorgeous_preak",
       "breakpoints": true
+    },
+    {
+      "idx": 2,
+      "version": "7",
+      "when": 1787828489688,
+      "tag": "0002_tearful_vulcan",
+      "breakpoints": true
     }
   ]
 }

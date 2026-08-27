@@ -14,21 +14,22 @@ import {
   type LiveOperatingExpense,
 } from "./xero-source";
 import { liveExpectedDeposit, loadLiveOpenOpportunities, type LiveOpportunity } from "./ghl-source";
+import { loadManualStages, type ManualStageRow } from "./manual-stages-source";
 
 // ---------------------------------------------------------------------------
 // Live equivalent of the forecast/alerts engine in calculations.ts, built
-// from real Buildxact/Xero/GHL data rather than mock-data.ts. Two categories
-// are deliberately NOT reproduced here because no live data source exists
-// for them yet (see chat/commit history, not invented):
+// from real Buildxact/Xero/GHL data rather than mock-data.ts.
 //
-//   - FORECAST inflow timing from payment-schedule stages ("10% deposit,
-//     40% frame stage") - Dualiving's own internal invoicing plan per job,
-//     not a Buildxact API field. Jobs still get a single lump-sum "cost to
-//     complete" FORECAST outflow (using the job's own real
-//     remainingForecastCost and expectedCompletion date - real numbers, just
-//     not spread across stages like the mock version does).
-//   - The "supplier payment due before next customer payment" alert, which
-//     needs that same schedule data to know the next customer payment date.
+// FORECAST inflow timing from payment-schedule stages ("10% deposit, 40%
+// frame stage") isn't a Buildxact API field - it's Dualiving's own internal
+// invoicing plan per job, so it comes from manual_payment_stages (see
+// src/lib/manual-stages-source.ts and the Forecast page's stage manager)
+// instead. A job with no manual stages entered yet gets a lump-sum "cost to
+// complete" FORECAST outflow instead of one spread across stages, and no
+// FORECAST inflow at all - an honest gap until stages are entered, not a
+// guess. The "supplier payment due before next customer payment" alert still
+// isn't reproduced here, since it needs a *next payment date* per job that
+// isn't reliable without every active job having stages entered.
 //
 // Reuses the pure, data-agnostic pieces of calculations.ts directly
 // (jobCosting, daysOverdue) rather than re-deriving them - those already
@@ -41,6 +42,7 @@ export interface LiveForecastData {
   payables: LiveBill[];
   opportunities: LiveOpportunity[];
   operatingExpenses: LiveOperatingExpense[];
+  manualStagesByJobId: Map<string, ManualStageRow[]>;
   currentCashBalance: number;
 }
 
@@ -56,13 +58,14 @@ export interface LoadLiveForecastResult {
  * since that only removes the recurring-opex forecast items, not the whole
  * picture. */
 export async function loadLiveForecastData(): Promise<LoadLiveForecastResult> {
-  const [jobsResult, receivablesResult, payablesResult, bankResult, opexResult, oppsResult] = await Promise.all([
+  const [jobsResult, receivablesResult, payablesResult, bankResult, opexResult, oppsResult, manualStagesResult] = await Promise.all([
     loadLiveActiveJobsCashPositions(),
     loadLiveReceivables(),
     loadLivePayables(),
     loadLiveBankSummary(),
     loadLiveOperatingExpenses(),
     loadLiveOpenOpportunities(),
+    loadManualStages(),
   ]);
 
   if (jobsResult.source !== "live" || receivablesResult.source !== "live" || payablesResult.source !== "live" || bankResult.source !== "live") {
@@ -77,6 +80,7 @@ export async function loadLiveForecastData(): Promise<LoadLiveForecastResult> {
       payables: payablesResult.bills,
       opportunities: oppsResult.source === "live" ? oppsResult.opportunities : [],
       operatingExpenses: opexResult.source === "live" ? opexResult.expenses : [],
+      manualStagesByJobId: manualStagesResult.source === "live" ? manualStagesResult.stagesByJobId : new Map(),
       currentCashBalance: bankResult.totalBalance,
     },
     source: "live",
@@ -173,25 +177,71 @@ export function buildLiveForecastItems(data: LiveForecastData): ForecastItem[] {
     });
   }
 
-  // Forecast outflows: remaining job cost as a single lump sum at expected
-  // completion - no live payment-schedule data to spread it across stages
-  // (see module comment).
+  // Forecast inflows: not-yet-invoiced manual payment stages.
+  for (const row of data.jobRows) {
+    const stages = data.manualStagesByJobId.get(row.job.id);
+    if (!stages) continue;
+    const revisedRevenue = jobCosting(row.job).revisedRevenue;
+    for (const stage of stages.filter((s) => !s.invoiced)) {
+      items.push({
+        id: `live-fc-stage-${stage.id}`,
+        source: "manual",
+        sourceId: stage.id,
+        date: clampToday(stage.expectedDate),
+        amount: Math.round((stage.percentOfContract / 100) * revisedRevenue),
+        direction: "inflow",
+        category: "customer_receipt",
+        jobId: row.job.id,
+        party: row.job.client,
+        confidence: "forecast",
+        status: stage.triggerDescription ? `Expected on ${stage.triggerDescription.toLowerCase()}` : "Manually entered payment stage",
+        description: `${row.job.jobNumber} ${row.job.client} - ${stage.label} (not yet invoiced)`,
+      });
+    }
+  }
+
+  // Forecast outflows: remaining job cost, spread across a job's own
+  // not-yet-invoiced manual stages when they exist (same weighting as the
+  // mock engine), otherwise a single lump sum at expected completion.
   for (const row of data.jobRows) {
     if (row.job.remainingForecastCost <= 0) continue;
-    items.push({
-      id: `live-fc-cost-${row.job.id}-lump`,
-      source: "buildxact",
-      sourceId: `${row.job.sourceId}-remaining-cost`,
-      date: clampToday(row.job.expectedCompletion || TODAY),
-      amount: row.job.remainingForecastCost,
-      direction: "outflow",
-      category: "job_cost",
-      jobId: row.job.id,
-      party: row.job.client,
-      confidence: "forecast",
-      status: "Estimated cost to complete",
-      description: `${row.job.jobNumber} ${row.job.client} - forecast cost to complete`,
-    });
+    const remainingStages = (data.manualStagesByJobId.get(row.job.id) ?? []).filter((s) => !s.invoiced);
+    const remainingPercentTotal = remainingStages.reduce((s, st) => s + st.percentOfContract, 0);
+
+    if (remainingStages.length === 0 || remainingPercentTotal === 0) {
+      items.push({
+        id: `live-fc-cost-${row.job.id}-lump`,
+        source: "buildxact",
+        sourceId: `${row.job.sourceId}-remaining-cost`,
+        date: clampToday(row.job.expectedCompletion || TODAY),
+        amount: row.job.remainingForecastCost,
+        direction: "outflow",
+        category: "job_cost",
+        jobId: row.job.id,
+        party: row.job.client,
+        confidence: "forecast",
+        status: "Estimated cost to complete",
+        description: `${row.job.jobNumber} ${row.job.client} - forecast cost to complete`,
+      });
+      continue;
+    }
+
+    for (const stage of remainingStages) {
+      items.push({
+        id: `live-fc-cost-${row.job.id}-${stage.id}`,
+        source: "buildxact",
+        sourceId: `${stage.id}-cost`,
+        date: clampToday(stage.expectedDate),
+        amount: Math.round((stage.percentOfContract / remainingPercentTotal) * row.job.remainingForecastCost),
+        direction: "outflow",
+        category: "job_cost",
+        jobId: row.job.id,
+        party: row.job.client,
+        confidence: "forecast",
+        status: "Estimated cost to complete",
+        description: `${row.job.jobNumber} ${row.job.client} - cost to reach ${stage.label}`,
+      });
+    }
   }
 
   // Forecast outflows: recurring operating expense categories, projected

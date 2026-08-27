@@ -103,6 +103,28 @@ export const manualAdjustments = pgTable("manual_adjustments", {
   date: timestamp("date").notNull().defaultNow(),
 });
 
+// Manual payment-schedule stages for live (Buildxact) jobs - fills the gap
+// where Buildxact has no API field for Dualiving's own invoicing plan (e.g.
+// "10% deposit", "40% frame stage"), so the live forecast engine has no
+// FORECAST-confidence inflow timing without this. No source/sourceId pair
+// since this is genuinely manual data, not synced from anywhere - createdBy
+// is a plain free-text label (e.g. the site's shared login name), not a
+// users.id FK, since the app has no real per-user accounts yet.
+export const manualPaymentStages = pgTable("manual_payment_stages", {
+  id: id(),
+  jobId: text("job_id")
+    .notNull()
+    .references(() => jobs.id),
+  label: text("label").notNull(),
+  percentOfContract: doublePrecision("percent_of_contract").notNull(),
+  triggerDescription: text("trigger_description"),
+  expectedDate: timestamp("expected_date").notNull(),
+  invoiced: boolean("invoiced").notNull().default(false),
+  createdBy: text("created_by"),
+  createdAt: timestamp("created_at").notNull().defaultNow(),
+  updatedAt: timestamp("updated_at").notNull().defaultNow(),
+});
+
 export const auditLogs = pgTable("audit_logs", {
   id: id(),
   action: text("action").notNull(), // "sync" | "manual_adjustment" | "login" | "settings_change"
