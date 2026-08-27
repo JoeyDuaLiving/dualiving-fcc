@@ -111,7 +111,7 @@ export default async function SettingsPage({
                   {xeroStatus.state !== "not_configured" && (
                     <Link
                       href="/api/integrations/xero/connect"
-                      className="text-xs text-blue-400 hover:text-blue-300 border border-slate-700 rounded-md px-2 py-1"
+                      className="text-xs text-brand-400 hover:text-brand-300 border border-slate-700 rounded-md px-2 py-1"
                     >
                       {xeroStatus.state === "connected" ? "Reconnect" : "Connect"}
                     </Link>

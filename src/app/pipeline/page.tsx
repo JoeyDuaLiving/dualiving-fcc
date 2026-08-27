@@ -114,7 +114,7 @@ export default async function PipelinePage() {
                     <td className="py-2.5 text-slate-400 whitespace-nowrap">{opp.expectedCloseDate ? formatDateAU(opp.expectedCloseDate) : "—"}</td>
                     <td className="py-2.5">
                       {opp.jobId ? (
-                        <Link href={`/jobs/${opp.jobId}`} className="text-blue-400 hover:text-blue-300">
+                        <Link href={`/jobs/${opp.jobId}`} className="text-brand-400 hover:text-brand-300">
                           {opp.jobNumber ?? opp.jobId}
                         </Link>
                       ) : (

@@ -94,7 +94,7 @@ export default async function PayablesPage() {
                     <td className="py-2.5 text-slate-300">{bill.supplier}</td>
                     <td className="py-2.5">
                       {bill.jobId ? (
-                        <Link href={`/jobs/${bill.jobId}`} className="text-blue-400 hover:text-blue-300">
+                        <Link href={`/jobs/${bill.jobId}`} className="text-brand-400 hover:text-brand-300">
                           {bill.jobNumber ?? bill.jobId}
                         </Link>
                       ) : (

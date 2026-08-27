@@ -91,7 +91,7 @@ export function JobsTable({ rows }: { rows: JobRow[] }) {
             {sorted.map((r) => (
               <tr key={r.job.id} className="hover:bg-slate-900/60">
                 <td className="py-2.5">
-                  <Link href={`/jobs/${r.job.id}`} className="text-blue-400 hover:text-blue-300 font-medium">
+                  <Link href={`/jobs/${r.job.id}`} className="text-brand-400 hover:text-brand-300 font-medium">
                     {r.job.id}
                   </Link>
                   <div className="text-[11px] text-slate-500">{r.job.jobNumber}</div>

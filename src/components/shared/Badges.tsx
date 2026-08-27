@@ -2,7 +2,7 @@ import type { AlertSeverity, Confidence } from "@/types";
 
 const CONFIDENCE_STYLE: Record<Confidence, string> = {
   actual: "bg-slate-700 text-slate-200",
-  committed: "bg-blue-500/15 text-blue-300",
+  committed: "bg-brand-500/15 text-brand-300",
   forecast: "bg-amber-500/15 text-amber-300",
   potential: "bg-purple-500/15 text-purple-300",
 };

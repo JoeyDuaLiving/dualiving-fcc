@@ -88,7 +88,7 @@ export default async function DashboardPage() {
           </div>
         }
         action={
-          <Link href="/alerts" className="text-xs text-blue-400 hover:text-blue-300 flex items-center gap-1">
+          <Link href="/alerts" className="text-xs text-brand-400 hover:text-brand-300 flex items-center gap-1">
             View all <ArrowRight size={12} />
           </Link>
         }
@@ -140,7 +140,7 @@ export default async function DashboardPage() {
       </div>
 
       {/* 30/60/90 forecast */}
-      <Card title="30 / 60 / 90 Day Cash Forecast" action={<Link href="/cash-flow" className="text-xs text-blue-400 hover:text-blue-300 flex items-center gap-1">Full forecast <ArrowRight size={12} /></Link>} className="mb-6">
+      <Card title="30 / 60 / 90 Day Cash Forecast" action={<Link href="/cash-flow" className="text-xs text-brand-400 hover:text-brand-300 flex items-center gap-1">Full forecast <ArrowRight size={12} /></Link>} className="mb-6">
         <div className="grid grid-cols-2 md:grid-cols-4 gap-4 mb-5">
           {[
             { label: "Today", value: summary.today },
@@ -188,7 +188,7 @@ export default async function DashboardPage() {
       {/* Job cash risk quick table */}
       <Card
         title="Jobs consuming the most cash"
-        action={<Link href="/jobs" className="text-xs text-blue-400 hover:text-blue-300 flex items-center gap-1">All jobs <ArrowRight size={12} /></Link>}
+        action={<Link href="/jobs" className="text-xs text-brand-400 hover:text-brand-300 flex items-center gap-1">All jobs <ArrowRight size={12} /></Link>}
       >
         {topCashRiskJobs.length === 0 ? (
           <p className="text-sm text-slate-400">No active jobs currently require additional cash to finish.</p>
@@ -208,7 +208,7 @@ export default async function DashboardPage() {
                 {topCashRiskJobs.map(({ job, pos }) => (
                   <tr key={job.id} className="hover:bg-slate-900/60">
                     <td className="py-2.5">
-                      <Link href={`/jobs/${job.id}`} className="text-blue-400 hover:text-blue-300 font-medium">
+                      <Link href={`/jobs/${job.id}`} className="text-brand-400 hover:text-brand-300 font-medium">
                         {job.id}
                       </Link>
                     </td>

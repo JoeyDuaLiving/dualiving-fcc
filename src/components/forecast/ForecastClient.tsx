@@ -72,7 +72,7 @@ export function ForecastClient({
               <button
                 key={name}
                 onClick={() => setActiveScenario(name)}
-                className={`px-3 py-1.5 capitalize ${activeScenario === name ? "bg-blue-500 text-white" : "text-slate-400 hover:bg-slate-800"}`}
+                className={`px-3 py-1.5 capitalize ${activeScenario === name ? "bg-brand-500 text-white" : "text-slate-400 hover:bg-slate-800"}`}
               >
                 {name}
               </button>
@@ -87,7 +87,7 @@ export function ForecastClient({
               key={r.name}
               onClick={() => setActiveScenario(r.name)}
               className={`text-left rounded-lg border p-3 transition-colors ${
-                activeScenario === r.name ? "border-blue-500 bg-blue-500/10" : "border-slate-800 bg-slate-900/40 hover:border-slate-700"
+                activeScenario === r.name ? "border-brand-500 bg-brand-500/10" : "border-slate-800 bg-slate-900/40 hover:border-slate-700"
               }`}
             >
               <div className="text-xs font-medium text-slate-300 capitalize">{r.name}</div>

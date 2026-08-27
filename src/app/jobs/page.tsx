@@ -135,7 +135,7 @@ export default async function JobsPage() {
                 return (
                   <tr key={job.id} className="hover:bg-slate-900/60">
                     <td className="py-2.5">
-                      <Link href={`/jobs/${job.id}`} className="text-blue-400 hover:text-blue-300 font-medium">
+                      <Link href={`/jobs/${job.id}`} className="text-brand-400 hover:text-brand-300 font-medium">
                         {job.id}
                       </Link>
                     </td>

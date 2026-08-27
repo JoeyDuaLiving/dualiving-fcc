@@ -107,7 +107,7 @@ export default async function ReceivablesPage() {
                     <td className="py-2.5 text-slate-300">{inv.customer}</td>
                     <td className="py-2.5">
                       {inv.jobId ? (
-                        <Link href={`/jobs/${inv.jobId}`} className="text-blue-400 hover:text-blue-300">
+                        <Link href={`/jobs/${inv.jobId}`} className="text-brand-400 hover:text-brand-300">
                           {inv.jobNumber ?? inv.jobId}
                         </Link>
                       ) : (

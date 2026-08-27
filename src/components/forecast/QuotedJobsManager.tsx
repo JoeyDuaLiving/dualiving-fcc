@@ -166,7 +166,7 @@ export function QuotedJobsManager({ quotedJobs }: { quotedJobs: QuotedJobDTO[] }
         <button
           onClick={addQuotedJob}
           disabled={submitting}
-          className="bg-blue-500 hover:bg-blue-400 disabled:opacity-50 text-white text-sm rounded-md px-3 py-1.5"
+          className="bg-brand-500 hover:bg-brand-400 disabled:opacity-50 text-white text-sm rounded-md px-3 py-1.5"
         >
           {submitting ? "Adding..." : "Add quoted job"}
         </button>

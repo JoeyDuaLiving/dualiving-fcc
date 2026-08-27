@@ -36,7 +36,7 @@ export function Sidebar() {
   return (
     <aside className="hidden lg:flex lg:w-60 lg:flex-col lg:fixed lg:inset-y-0 border-r border-slate-800 bg-slate-950">
       <div className="flex items-center gap-2 px-5 h-16 border-b border-slate-800">
-        <div className="h-8 w-8 rounded-md bg-blue-500 flex items-center justify-center text-white font-bold text-sm">
+        <div className="h-8 w-8 rounded-md bg-brand-500 flex items-center justify-center text-white font-bold text-sm">
           DL
         </div>
         <div>
@@ -54,7 +54,7 @@ export function Sidebar() {
               href={item.href}
               className={`flex items-center gap-2.5 rounded-md px-3 py-2 text-sm transition-colors ${
                 active
-                  ? "bg-blue-500/15 text-blue-300 font-medium"
+                  ? "bg-brand-500/15 text-brand-300 font-medium"
                   : "text-slate-400 hover:bg-slate-900 hover:text-slate-200"
               }`}
             >

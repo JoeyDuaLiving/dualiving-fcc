@@ -10,6 +10,11 @@
   --color-foreground: var(--foreground);
   --font-sans: var(--font-geist-sans);
   --font-mono: var(--font-geist-mono);
+  /* Brand accent - replaces the default Tailwind blue used for buttons,
+     links and active states throughout the app. */
+  --color-brand-300: #a0aaa0;
+  --color-brand-400: #808d81;
+  --color-brand-500: #607161;
 }
 
 body {

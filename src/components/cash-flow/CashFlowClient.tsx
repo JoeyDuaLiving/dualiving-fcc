@@ -71,13 +71,13 @@ export function CashFlowClient({
           <div className="flex rounded-md border border-slate-700 overflow-hidden text-xs">
             <button
               onClick={() => setView("daily")}
-              className={`px-3 py-1.5 ${view === "daily" ? "bg-blue-500 text-white" : "text-slate-400 hover:bg-slate-800"}`}
+              className={`px-3 py-1.5 ${view === "daily" ? "bg-brand-500 text-white" : "text-slate-400 hover:bg-slate-800"}`}
             >
               Daily
             </button>
             <button
               onClick={() => setView("weekly")}
-              className={`px-3 py-1.5 ${view === "weekly" ? "bg-blue-500 text-white" : "text-slate-400 hover:bg-slate-800"}`}
+              className={`px-3 py-1.5 ${view === "weekly" ? "bg-brand-500 text-white" : "text-slate-400 hover:bg-slate-800"}`}
             >
               Weekly
             </button>
@@ -134,7 +134,7 @@ export function CashFlowClient({
                   <td className="py-2 whitespace-nowrap text-slate-400">{formatDateAU(item.date)}</td>
                   <td className="py-2 text-slate-200">
                     {item.jobId ? (
-                      <Link href={`/jobs/${item.jobId}`} className="hover:text-blue-300">
+                      <Link href={`/jobs/${item.jobId}`} className="hover:text-brand-300">
                         {item.description}
                       </Link>
                     ) : (

@@ -193,7 +193,7 @@ function MockJobDetail({ job }: { job: Job }) {
                   <span className="text-slate-300 tabular-nums">{formatAUD(row.value)}</span>
                 </div>
                 <div className="h-1.5 rounded-full bg-slate-800 overflow-hidden">
-                  <div className="h-full bg-blue-500 rounded-full" style={{ width: `${(row.value / maxCost) * 100}%` }} />
+                  <div className="h-full bg-brand-500 rounded-full" style={{ width: `${(row.value / maxCost) * 100}%` }} />
                 </div>
               </div>
             ))}
@@ -231,7 +231,7 @@ function MockJobDetail({ job }: { job: Job }) {
       </div>
 
       <div className="grid lg:grid-cols-2 gap-6 mb-6">
-        <Card title="Invoices" action={<Link href="/receivables" className="text-xs text-blue-400 hover:text-blue-300">All receivables</Link>}>
+        <Card title="Invoices" action={<Link href="/receivables" className="text-xs text-brand-400 hover:text-brand-300">All receivables</Link>}>
           <table className="w-full text-sm">
             <thead>
               <tr className="text-left text-xs text-slate-500 border-b border-slate-800">
@@ -263,7 +263,7 @@ function MockJobDetail({ job }: { job: Job }) {
           </table>
         </Card>
 
-        <Card title="Bills" action={<Link href="/payables" className="text-xs text-blue-400 hover:text-blue-300">All payables</Link>}>
+        <Card title="Bills" action={<Link href="/payables" className="text-xs text-brand-400 hover:text-brand-300">All payables</Link>}>
           <table className="w-full text-sm">
             <thead>
               <tr className="text-left text-xs text-slate-500 border-b border-slate-800">
@@ -297,7 +297,7 @@ function MockJobDetail({ job }: { job: Job }) {
       </div>
 
       {flags.length > 0 && (
-        <Card title="Reconciliation flags" action={<Link href="/reconciliation" className="text-xs text-blue-400 hover:text-blue-300">All flags</Link>}>
+        <Card title="Reconciliation flags" action={<Link href="/reconciliation" className="text-xs text-brand-400 hover:text-brand-300">All flags</Link>}>
           <ul className="space-y-2">
             {flags.map((f) => (
               <li key={f.id} className="text-sm text-slate-300 flex items-start gap-2">

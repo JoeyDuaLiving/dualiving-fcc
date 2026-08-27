@@ -43,7 +43,7 @@ export default function ReconciliationPage() {
                     {f.severity}
                   </StatusPill>
                   <span className="text-xs text-slate-500">{TYPE_LABEL[f.type]}</span>
-                  <Link href={`/jobs/${f.jobId}`} className="text-xs text-blue-400 hover:text-blue-300">
+                  <Link href={`/jobs/${f.jobId}`} className="text-xs text-brand-400 hover:text-brand-300">
                     {f.jobId}
                   </Link>
                 </div>
@@ -76,7 +76,7 @@ export default function ReconciliationPage() {
               {jobMappings.map((m) => (
                 <tr key={m.dualivingJobId} className="hover:bg-slate-900/60">
                   <td className="py-2.5">
-                    <Link href={`/jobs/${m.dualivingJobId}`} className="text-blue-400 hover:text-blue-300 font-medium">
+                    <Link href={`/jobs/${m.dualivingJobId}`} className="text-brand-400 hover:text-brand-300 font-medium">
                       {m.dualivingJobId}
                     </Link>
                   </td>

@@ -20,7 +20,7 @@ export async function TopBar() {
   return (
     <header className="sticky top-0 z-10 h-16 border-b border-slate-800 bg-slate-950/95 backdrop-blur flex items-center justify-between px-4 lg:px-6">
       <div className="flex items-center gap-2 lg:hidden">
-        <div className="h-7 w-7 rounded-md bg-blue-500 flex items-center justify-center text-white font-bold text-xs">
+        <div className="h-7 w-7 rounded-md bg-brand-500 flex items-center justify-center text-white font-bold text-xs">
           DL
         </div>
         <span className="text-sm font-semibold text-white">Dualiving FCC</span>
