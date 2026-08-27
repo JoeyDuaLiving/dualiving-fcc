@@ -16,18 +16,20 @@ import type { BuildxactJob, BuildxactJobInvoice, BuildxactPurchaseOrder } from "
 // it's trustworthy - flagged in the UI, not hidden.
 // ---------------------------------------------------------------------------
 
-/** Status vocabulary is not confirmed as a fixed enum (only "Not Started"
- * has been observed live) - this is a best-effort heuristic, not a lookup
- * table, so it degrades gracefully for status strings we haven't seen yet.
- * Buildxact's own `status` text is often stale (jobs sit at "Not Started"
- * well past 0% progress) so progressPercent takes priority for that case. */
+/** Status vocabulary is not confirmed as a fixed enum, and Buildxact's own
+ * `status` text is confirmed stale in practice (per the business: jobs sit
+ * at "Not Started" long after work begins - only 9 of 111 jobs are actually
+ * yet to start, not the ~86 the raw status text implied). progressPercent is
+ * the real signal and takes priority: 100% is complete, 0% is yet to start,
+ * anything between is in progress. "On hold" / "quote" status text is still
+ * respected where present, since those are real states progress alone can't
+ * capture (a job can be on hold at any progress level). */
 export function mapBuildxactStatus(status: string, isCompleted: boolean, progressPercent = 0): JobStatus {
-  if (isCompleted) return "complete";
+  if (isCompleted || progressPercent >= 100) return "complete";
   const s = status.toLowerCase();
-  if (s.includes("complete")) return "complete";
   if (s.includes("hold")) return "on_hold";
   if (s.includes("quote") || s.includes("estimate")) return "quoting";
-  if (s.includes("not started")) return progressPercent > 0 ? "in_progress" : "contracted";
+  if (progressPercent <= 0) return "contracted";
   return "in_progress";
 }
 
