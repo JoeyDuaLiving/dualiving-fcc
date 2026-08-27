@@ -43,7 +43,7 @@ export function LiveJobsTable({ jobs }: { jobs: Job[] }) {
             <tr key={job.id} className="hover:bg-slate-900/60">
               <td className="py-2.5">
                 <Link href={`/jobs/${job.id}`} className="text-blue-400 hover:text-blue-300 font-medium">
-                  {job.jobNumber}-{job.client}
+                  {job.jobNumber} - {job.client}
                 </Link>
               </td>
               <td className="py-2.5 text-slate-300">
