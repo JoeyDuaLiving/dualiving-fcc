@@ -240,7 +240,16 @@ export function generateLiveAlerts(data: LiveForecastData, forecastSummary: Cash
     });
   }
 
-  for (const row of data.jobRows) {
+  // Small/placeholder jobs (e.g. Buildxact's $0 "STOCK" job, or genuinely
+  // minor jobs under $25k) generate a disproportionate share of alert noise
+  // relative to their real financial significance - job-level alerts only
+  // fire above that threshold. WIP/cash-required totals elsewhere are NOT
+  // filtered, since those should reflect true financial exposure regardless
+  // of job size.
+  const MINIMUM_ALERT_JOB_VALUE = 25_000;
+  const significantJobRows = data.jobRows.filter((row) => jobCosting(row.job).revisedRevenue >= MINIMUM_ALERT_JOB_VALUE);
+
+  for (const row of significantJobRows) {
     const cashRequired = liveCashRequiredToFinish(row);
     if (cashRequired > 0) {
       alerts.push({
