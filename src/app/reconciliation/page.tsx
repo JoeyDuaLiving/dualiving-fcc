@@ -30,7 +30,7 @@ export default async function ReconciliationPage() {
       <div>
         <PageHeader
           title="Reconciliation"
-          description="Buildxact and Xero are cross-checked here, matched by job code - primarily Xero's Job Codes tracking category, falling back to a job-number-in-description match for older records. Scoped to active/contracted jobs; GHL and contact-level matching aren't included."
+          description="Buildxact and Xero are cross-checked here, matched by job code - primarily Xero's Job Codes tracking category, falling back to a job-number-in-description match for older records. Scoped to active/contracted jobs; the STOCK placeholder job, J4xxx-series codes from a previous CRM, GHL and contact-level matching aren't included."
           action={<StatusPill tone="good">Live</StatusPill>}
         />
 

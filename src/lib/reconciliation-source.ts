@@ -23,7 +23,21 @@ import type { XeroInvoice } from "@/integrations/xero/types";
 // jobs' Xero records mostly predate this year's job-tracking conventions,
 // so including them would mostly surface old, uninteresting noise rather
 // than real current discrepancies.
+//
+// Two more exclusions, per business direction:
+//   - The "STOCK" placeholder job (Buildxact number "STOCK - J1057") isn't
+//     a real client job - stock received but not yet allocated is planned
+//     as its own separate tracking feature later, not part of job
+//     reconciliation. Still counted as a "known" job for orphan-matching
+//     purposes (a Xero record referencing J1057 is real, just not shown
+//     in the main table), just excluded from the by-job comparison.
+//   - "J4xxx"-series codes are from a previous/different CRM this
+//     business used before Buildxact - they will never match a Buildxact
+//     job and aren't actionable, so they're filtered out of the orphaned
+//     list entirely rather than shown as noise every time.
 // ---------------------------------------------------------------------------
+
+const LEGACY_CRM_JOB_RE = /^J4\d+$/i;
 
 const JOB_NUMBER_RE = /\bJ\d{3,5}\b/i;
 
@@ -86,7 +100,7 @@ function flagVariance(variance: number, base: number, label: string): string | n
 export async function loadReconciliation(): Promise<ReconciliationResult> {
   try {
     const jobRows = await db.select().from(jobs).where(eq(jobs.source, "buildxact"));
-    const activeJobs = jobRows.filter((j) => j.status !== "complete");
+    const activeJobs = jobRows.filter((j) => j.status !== "complete" && j.client.toUpperCase() !== "STOCK");
     if (activeJobs.length === 0) {
       return { rows: [], orphanedRecords: [], source: "unavailable", error: "No active Buildxact jobs synced yet." };
     }
@@ -146,7 +160,7 @@ export async function loadReconciliation(): Promise<ReconciliationResult> {
     for (const b of billRows) {
       if (b.jobId) continue;
       const candidate = extractJobNumberFromRaw(b.raw);
-      if (candidate && !jobNumberSet.has(candidate)) {
+      if (candidate && !jobNumberSet.has(candidate) && !LEGACY_CRM_JOB_RE.test(candidate)) {
         orphanedRecords.push({
           type: "bill",
           id: b.id,
@@ -161,7 +175,7 @@ export async function loadReconciliation(): Promise<ReconciliationResult> {
     for (const inv of invoiceRows) {
       if (inv.jobId) continue;
       const candidate = extractJobNumberFromRaw(inv.raw);
-      if (candidate && !jobNumberSet.has(candidate)) {
+      if (candidate && !jobNumberSet.has(candidate) && !LEGACY_CRM_JOB_RE.test(candidate)) {
         orphanedRecords.push({
           type: "invoice",
           id: inv.id,
