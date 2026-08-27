@@ -1,5 +1,5 @@
 import "server-only";
-import { eq, sql } from "drizzle-orm";
+import { and, eq, isNull, sql } from "drizzle-orm";
 import { db } from "@/db/client";
 import { bankAccounts, bills, customers, invoices, jobs, operatingExpenses, suppliers, syncErrors, syncRuns } from "@/db/schema";
 import {
@@ -151,6 +151,25 @@ export async function syncXero(): Promise<XeroSyncResult> {
       recordsUpdated += updated;
     } catch (err) {
       await logError(undefined, `Bills: ${err instanceof Error ? err.message : String(err)}`);
+    }
+
+    // --- Relink previously-unmatched bills/invoices ------------------------
+    // getOutstandingBills() only ever returns currently-unpaid bills (see
+    // accounting.ts scope note) - once a bill is paid it drops out of every
+    // future sync's fetch window for good, freezing whatever jobId it was
+    // given (or not given) the last time it was touched. A bill synced
+    // before job-code tracking existed, or before a mapper fix landed, can
+    // end up permanently stuck with jobId null even though its own raw
+    // payload clearly names a real job. This re-checks every already-stored
+    // xero bill/invoice with jobId still null against the job list using
+    // today's matching logic, using the raw payload already on hand (no
+    // extra Xero API calls) - cheap since the null-jobId set is small, and
+    // self-healing for any future matching improvement too.
+    try {
+      const relinked = await relinkOrphanedJobRecords(jobIdByNumber);
+      recordsUpdated += relinked;
+    } catch (err) {
+      await logError(undefined, `Relink orphaned records: ${err instanceof Error ? err.message : String(err)}`);
     }
 
     // --- Operating expenses (bank spend txns + bills, DIRECTCOSTS excluded)
@@ -339,6 +358,36 @@ async function upsertBills(apBills: XeroInvoice[], supplierIdBySourceId: Map<str
   }
 
   return { imported, updated };
+}
+
+async function relinkOrphanedJobRecords(jobIdByNumber: Map<string, string>): Promise<number> {
+  let relinked = 0;
+
+  const orphanBills = await db
+    .select({ id: bills.id, raw: bills.raw })
+    .from(bills)
+    .where(and(eq(bills.source, "xero"), isNull(bills.jobId)));
+  for (const row of orphanBills) {
+    const jobNumber = resolveJobNumber(row.raw as XeroInvoice);
+    const jobId = jobNumber ? jobIdByNumber.get(jobNumber) : undefined;
+    if (!jobId) continue;
+    await db.update(bills).set({ jobId, updatedAt: new Date() }).where(eq(bills.id, row.id));
+    relinked++;
+  }
+
+  const orphanInvoices = await db
+    .select({ id: invoices.id, raw: invoices.raw })
+    .from(invoices)
+    .where(and(eq(invoices.source, "xero"), isNull(invoices.jobId)));
+  for (const row of orphanInvoices) {
+    const jobNumber = resolveJobNumber(row.raw as XeroInvoice);
+    const jobId = jobNumber ? jobIdByNumber.get(jobNumber) : undefined;
+    if (!jobId) continue;
+    await db.update(invoices).set({ jobId, updatedAt: new Date() }).where(eq(invoices.id, row.id));
+    relinked++;
+  }
+
+  return relinked;
 }
 
 interface OperatingExpenseRow {

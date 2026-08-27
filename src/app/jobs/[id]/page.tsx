@@ -351,11 +351,19 @@ function LiveJobDetailView({ detail }: { detail: LiveJobDetail }) {
         once that gap is closed (a confirmed field, or a manual override).
       </div>
 
-      <div className="grid grid-cols-2 md:grid-cols-4 gap-3 mb-6">
+      <div className="grid grid-cols-2 md:grid-cols-3 lg:grid-cols-6 gap-3 mb-6">
         <StatCard label="Contract value" value={formatAUD(job.contractValue)} sub={`incl. ${formatAUD(job.approvedVariations)} variations`} />
         <StatCard label="Actual cost" value={formatAUD(job.actualCost)} />
         <StatCard label="Committed cost" value={formatAUD(cashPosition.committedCost)} sub={`${purchaseOrders.length} purchase orders`} />
         <StatCard label="Cash received" value={formatAUD(cashPosition.cashReceived)} sub={`of ${formatAUD(cashPosition.amountInvoicedToDate)} invoiced`} />
+        <StatCard label="Xero bills" value={formatAUD(xeroBillsTotal)} sub={`${xeroBills.length} matched`} />
+        <StatCard label="Xero invoices" value={formatAUD(xeroInvoicesTotal)} sub={`${xeroInvoices.length} matched`} />
+      </div>
+
+      <div className="mb-6 rounded-lg border border-slate-800 bg-slate-900/40 px-4 py-3 text-xs text-slate-400">
+        Xero bills/invoices below are matched to this job by job code (Xero&rsquo;s &ldquo;Job Codes&rdquo; tracking
+        category, or a job-number-in-description match for older records) - shown as a cross-check against the
+        Buildxact figures above, not a source for them.
       </div>
 
       <div className="grid lg:grid-cols-2 gap-6 mb-6">
@@ -389,44 +397,6 @@ function LiveJobDetailView({ detail }: { detail: LiveJobDetail }) {
           </table>
         </Card>
 
-        <Card title="Invoices" action={<span className="text-xs text-slate-500">{invoices.length}</span>}>
-          <table className="w-full text-sm">
-            <thead>
-              <tr className="text-left text-xs text-slate-500 border-b border-slate-800">
-                <th className="pb-2 font-medium">Stage</th>
-                <th className="pb-2 font-medium text-right">Amount</th>
-                <th className="pb-2 font-medium text-right">Due</th>
-                <th className="pb-2 font-medium text-right">Status</th>
-              </tr>
-            </thead>
-            <tbody className="divide-y divide-slate-800/60">
-              {invoices.map((inv) => (
-                <tr key={inv.jobPaymentId}>
-                  <td className="py-2 text-slate-300">{inv.description}</td>
-                  <td className="py-2 text-right tabular-nums text-slate-300">{formatAUD(inv.totalIncTax)}</td>
-                  <td className="py-2 text-right text-slate-400 whitespace-nowrap">{formatDateAU(inv.dueDate)}</td>
-                  <td className="py-2 text-right">
-                    <StatusPill tone={inv.status === "Received" ? "good" : "neutral"}>{inv.status}</StatusPill>
-                  </td>
-                </tr>
-              ))}
-              {invoices.length === 0 && (
-                <tr>
-                  <td colSpan={4} className="py-4 text-center text-slate-500">No invoices raised yet.</td>
-                </tr>
-              )}
-            </tbody>
-          </table>
-        </Card>
-      </div>
-
-      <div className="mb-6 rounded-lg border border-slate-800 bg-slate-900/40 px-4 py-3 text-xs text-slate-400">
-        The two tables below are Xero bills/invoices matched to this job by job code (Xero&rsquo;s &ldquo;Job
-        Codes&rdquo; tracking category, or a job-number-in-description match for older records) - shown as a
-        cross-check against the Buildxact figures above, not a source for them.
-      </div>
-
-      <div className="grid lg:grid-cols-2 gap-6">
         <Card title="Xero bills (matched)" action={<span className="text-xs text-slate-500">{xeroBills.length} &middot; {formatAUD(xeroBillsTotal, { compact: true })}</span>}>
           <table className="w-full text-sm">
             <thead>
@@ -451,6 +421,38 @@ function LiveJobDetailView({ detail }: { detail: LiveJobDetail }) {
               {xeroBills.length === 0 && (
                 <tr>
                   <td colSpan={5} className="py-4 text-center text-slate-500">No Xero bills matched to this job.</td>
+                </tr>
+              )}
+            </tbody>
+          </table>
+        </Card>
+      </div>
+
+      <div className="grid lg:grid-cols-2 gap-6">
+        <Card title="Invoices" action={<span className="text-xs text-slate-500">{invoices.length}</span>}>
+          <table className="w-full text-sm">
+            <thead>
+              <tr className="text-left text-xs text-slate-500 border-b border-slate-800">
+                <th className="pb-2 font-medium">Stage</th>
+                <th className="pb-2 font-medium text-right">Amount</th>
+                <th className="pb-2 font-medium text-right">Due</th>
+                <th className="pb-2 font-medium text-right">Status</th>
+              </tr>
+            </thead>
+            <tbody className="divide-y divide-slate-800/60">
+              {invoices.map((inv) => (
+                <tr key={inv.jobPaymentId}>
+                  <td className="py-2 text-slate-300">{inv.description}</td>
+                  <td className="py-2 text-right tabular-nums text-slate-300">{formatAUD(inv.totalIncTax)}</td>
+                  <td className="py-2 text-right text-slate-400 whitespace-nowrap">{formatDateAU(inv.dueDate)}</td>
+                  <td className="py-2 text-right">
+                    <StatusPill tone={inv.status === "Received" ? "good" : "neutral"}>{inv.status}</StatusPill>
+                  </td>
+                </tr>
+              ))}
+              {invoices.length === 0 && (
+                <tr>
+                  <td colSpan={4} className="py-4 text-center text-slate-500">No invoices raised yet.</td>
                 </tr>
               )}
             </tbody>
