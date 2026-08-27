@@ -64,7 +64,10 @@ export interface LiveJobsListResult {
  * instead. */
 export async function loadLiveJobsList(): Promise<LiveJobsListResult> {
   try {
-    const rows = await db.select().from(jobs).where(eq(jobs.source, "buildxact")).orderBy(desc(jobs.updatedAt));
+    // Newest first by creation date, matching Buildxact's own job list order
+    // - not updatedAt, which just reflects whichever jobs the last sync
+    // happened to touch and isn't a meaningful business order.
+    const rows = await db.select().from(jobs).where(eq(jobs.source, "buildxact")).orderBy(desc(jobs.startDate));
     if (rows.length === 0) {
       return { jobs: [], source: "unavailable", error: "No Buildxact jobs synced yet - run a sync from Settings." };
     }

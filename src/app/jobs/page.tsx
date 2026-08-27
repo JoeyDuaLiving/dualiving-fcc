@@ -73,10 +73,10 @@ export default async function JobsPage() {
           className="mb-6"
         >
           <p className="text-xs text-slate-500 mb-3">
-            Job number, client, status, progress, contract value, actual cost, committed cost (from live purchase orders)
-            and variations are synced from Buildxact. Margin and cash-required aren&rsquo;t shown here yet - Buildxact has
-            no confirmed &ldquo;cost to complete&rdquo; field, so those numbers would be guesses (open a job for its full
-            purchase order / invoice breakdown, which is real).
+            Job number, client, status, progress, contract value, actual cost and committed cost (from live purchase
+            orders) are synced from Buildxact. Profit and margin aren&rsquo;t final for jobs still in progress -
+            Buildxact has no confirmed &ldquo;cost to complete&rdquo; field, so both read optimistic until a job is
+            finished (open a job for its full purchase order / invoice breakdown, which is real).
           </p>
           <LiveJobsTable jobs={live.jobs} />
         </Card>

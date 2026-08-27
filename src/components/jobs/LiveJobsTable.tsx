@@ -1,6 +1,7 @@
 import Link from "next/link";
 import { formatAUD, formatDateAU } from "@/lib/format";
 import { StatusPill } from "@/components/shared/Badges";
+import { jobCosting } from "@/lib/calculations";
 import type { Job, JobStatus } from "@/types";
 
 const STATUS_LABEL: Record<JobStatus, string> = {
@@ -31,12 +32,14 @@ export function LiveJobsTable({ jobs }: { jobs: Job[] }) {
             <th className="pb-2 font-medium text-right">Contract</th>
             <th className="pb-2 font-medium text-right">Actual cost</th>
             <th className="pb-2 font-medium text-right">Committed</th>
-            <th className="pb-2 font-medium text-right">Variations</th>
+            <th className="pb-2 font-medium text-right">Profit</th>
             <th className="pb-2 font-medium text-right">Completion</th>
           </tr>
         </thead>
         <tbody className="divide-y divide-slate-800/60">
-          {jobs.map((job) => (
+          {jobs.map((job) => {
+            const costing = jobCosting(job);
+            return (
             <tr key={job.id} className="hover:bg-slate-900/60">
               <td className="py-2.5">
                 <Link href={`/jobs/${job.id}`} className="text-blue-400 hover:text-blue-300 font-medium">
@@ -51,15 +54,18 @@ export function LiveJobsTable({ jobs }: { jobs: Job[] }) {
                 <StatusPill tone={statusTone(job.status)}>{STATUS_LABEL[job.status]}</StatusPill>
               </td>
               <td className="py-2.5 text-right tabular-nums text-slate-300">{job.progressPercent}%</td>
-              <td className="py-2.5 text-right tabular-nums text-slate-300">{formatAUD(job.contractValue)}</td>
-              <td className="py-2.5 text-right tabular-nums text-slate-300">{formatAUD(job.actualCost)}</td>
-              <td className="py-2.5 text-right tabular-nums text-slate-300">{formatAUD(job.committedCost)}</td>
-              <td className="py-2.5 text-right tabular-nums text-slate-300">{formatAUD(job.approvedVariations)}</td>
+              <td className="py-2.5 text-right tabular-nums text-slate-300">{formatAUD(job.contractValue, { compact: true })}</td>
+              <td className="py-2.5 text-right tabular-nums text-slate-300">{formatAUD(job.actualCost, { compact: true })}</td>
+              <td className="py-2.5 text-right tabular-nums text-slate-300">{formatAUD(job.committedCost, { compact: true })}</td>
+              <td className={`py-2.5 text-right tabular-nums font-medium ${costing.forecastGrossProfit < 0 ? "text-red-400" : "text-emerald-400"}`}>
+                {formatAUD(costing.forecastGrossProfit, { compact: true })}
+              </td>
               <td className="py-2.5 text-right whitespace-nowrap text-slate-400">
                 {job.expectedCompletion ? formatDateAU(job.expectedCompletion) : "—"}
               </td>
             </tr>
-          ))}
+            );
+          })}
           {jobs.length === 0 && (
             <tr>
               <td colSpan={9} className="py-6 text-center text-slate-500">
