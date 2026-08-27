@@ -212,3 +212,83 @@ export async function loadLiveOperatingExpenses(): Promise<LiveOperatingExpenses
     return { expenses: [], source: "unavailable", error: err instanceof Error ? err.message : "Unknown error reading the database" };
   }
 }
+
+// ---------------------------------------------------------------------------
+// Live opex aggregates - same logic as the mock opex functions in
+// calculations.ts, operating on the already-loaded LiveOperatingExpense[]
+// instead of the module-level mock array.
+// ---------------------------------------------------------------------------
+
+function opexMonthKey(iso: string): string {
+  return iso.slice(0, 7);
+}
+
+export function liveOpexByMonth(expenses: LiveOperatingExpense[]): Map<string, number> {
+  const map = new Map<string, number>();
+  for (const e of expenses) map.set(opexMonthKey(e.date), (map.get(opexMonthKey(e.date)) ?? 0) + e.amount);
+  return map;
+}
+
+export function liveCurrentMonthOpex(expenses: LiveOperatingExpense[]): number {
+  return liveOpexByMonth(expenses).get(opexMonthKey(TODAY)) ?? 0;
+}
+
+export function liveAverageMonthlyOpex(expenses: LiveOperatingExpense[]): number {
+  const values = Array.from(liveOpexByMonth(expenses).values());
+  return values.length ? values.reduce((a, b) => a + b, 0) / values.length : 0;
+}
+
+export function liveMonthlyFixedCost(expenses: LiveOperatingExpense[]): number {
+  const months = new Set(expenses.map((e) => opexMonthKey(e.date)));
+  const fixedTotal = expenses.filter((e) => e.classification === "fixed").reduce((s, e) => s + e.amount, 0);
+  return months.size ? fixedTotal / months.size : 0;
+}
+
+export function liveMonthlyVariableCost(expenses: LiveOperatingExpense[]): number {
+  const months = new Set(expenses.map((e) => opexMonthKey(e.date)));
+  const variableTotal = expenses.filter((e) => e.classification === "variable").reduce((s, e) => s + e.amount, 0);
+  return months.size ? variableTotal / months.size : 0;
+}
+
+export function liveAnnualisedOpex(expenses: LiveOperatingExpense[]): number {
+  return liveAverageMonthlyOpex(expenses) * 12;
+}
+
+export function liveRevenueRequiredToCoverOpex(expenses: LiveOperatingExpense[], avgMarginPercent: number): number {
+  return liveAverageMonthlyOpex(expenses) / (avgMarginPercent / 100);
+}
+
+export interface LiveOpexCategoryRow {
+  category: string;
+  classification: "fixed" | "variable";
+  current: number;
+  previous: number;
+  ytd: number;
+  monthlyAverage: number;
+}
+
+export function liveOpexCategoryBreakdown(expenses: LiveOperatingExpense[]): LiveOpexCategoryRow[] {
+  const currentMonth = opexMonthKey(TODAY);
+  const [y, m] = currentMonth.split("-").map(Number);
+  const prevDate = new Date(Date.UTC(y, m - 2, 1));
+  const previousMonth = `${prevDate.getUTCFullYear()}-${String(prevDate.getUTCMonth() + 1).padStart(2, "0")}`;
+
+  const categories = new Map<string, LiveOpexCategoryRow>();
+  const monthsSeen = new Set<string>();
+
+  for (const e of expenses) {
+    monthsSeen.add(opexMonthKey(e.date));
+    if (!categories.has(e.category)) {
+      categories.set(e.category, { category: e.category, classification: e.classification, current: 0, previous: 0, ytd: 0, monthlyAverage: 0 });
+    }
+    const row = categories.get(e.category)!;
+    if (opexMonthKey(e.date) === currentMonth) row.current += e.amount;
+    if (opexMonthKey(e.date) === previousMonth) row.previous += e.amount;
+    if (e.date.startsWith(TODAY.slice(0, 4))) row.ytd += e.amount;
+  }
+
+  const monthCount = monthsSeen.size || 1;
+  for (const row of categories.values()) row.monthlyAverage = row.ytd / monthCount;
+
+  return Array.from(categories.values()).sort((a, b) => b.ytd - a.ytd);
+}
