@@ -12,6 +12,7 @@ export interface XeroAccount {
   Name: string;
   Status: "ACTIVE" | "ARCHIVED" | string;
   Type: string; // "BANK" for bank accounts
+  Class?: string; // "ASSET" | "EQUITY" | "EXPENSE" | "LIABILITY" | "REVENUE"
   BankAccountNumber?: string;
   BankAccountType?: string;
   CurrencyCode?: string;

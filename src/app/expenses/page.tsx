@@ -41,7 +41,11 @@ export default async function ExpensesPage() {
   const [liveOpex, liveBank] = await Promise.all([loadLiveOperatingExpenses(), loadLiveBankSummary()]);
   const isLive = liveOpex.source === "live";
 
-  const rows = isLive ? liveOpexCategoryBreakdown(liveOpex.expenses) : opexCategoryBreakdown();
+  // A category with nothing recorded in the current period, previous period
+  // or YTD isn't useful in this table - just noise.
+  const rows = (isLive ? liveOpexCategoryBreakdown(liveOpex.expenses) : opexCategoryBreakdown()).filter(
+    (r) => r.current !== 0 || r.previous !== 0 || r.ytd !== 0
+  );
   const currentMonth = isLive ? liveCurrentMonthOpex(liveOpex.expenses) : currentMonthOpex();
   const monthlyAverage = isLive ? liveAverageMonthlyOpex(liveOpex.expenses) : averageMonthlyOpex();
   const annualised = isLive ? liveAnnualisedOpex(liveOpex.expenses) : annualisedOpex();
