@@ -73,6 +73,23 @@ export interface LiveJobCashPosition {
   wip: number;
 }
 
+/** Confirmed live 2026-08-28: summing every PO's full orderTotalIncTax
+ * double-counts anything Buildxact has already delivered - that cost is
+ * already reflected in the job's own actualTotalIncTax. "Received" and
+ * "Completed" orders are excluded entirely (assumed already actual -
+ * "Completed" is inconsistent with Buildxact's own isCompleted boolean and
+ * barely invoiced in practice, but per business direction is still treated
+ * as delivered/closed, not an open cost). "Cancelled" orders are excluded
+ * too - never a real obligation. Everything else (Sent, Unsent,
+ * PartReceived) counts only the not-yet-invoiced remainder as committed,
+ * since a PO can be partially received/invoiced without a clean per-line
+ * split from Buildxact. Shared by both the sync engine and this file's own
+ * live job-detail computation below, so the two can't drift apart. */
+export function committedAmountForPo(po: BuildxactPurchaseOrder): number {
+  if (po.orderStatus === "Received" || po.orderStatus === "Completed" || po.orderStatus === "Cancelled") return 0;
+  return Math.max(0, po.orderTotalIncTax - po.invoiceTotalIncTax);
+}
+
 /** Computed from real Purchase Order + Job Invoice data (2 extra API calls) -
  * only call this for a single job being viewed in detail, not in a list loop
  * (see rate-limit note in live-jobs.ts). */
@@ -81,7 +98,7 @@ export function computeLiveJobCashPosition(
   purchaseOrders: BuildxactPurchaseOrder[],
   invoices: BuildxactJobInvoice[]
 ): LiveJobCashPosition {
-  const committedCost = purchaseOrders.reduce((s, po) => s + po.orderTotalIncTax, 0);
+  const committedCost = purchaseOrders.reduce((s, po) => s + committedAmountForPo(po), 0);
   const amountInvoicedToDate = invoices.reduce((s, inv) => s + inv.totalIncTax, 0);
   // "Received" is the only paid-status value confirmed live so far.
   const cashReceived = invoices.filter((inv) => inv.status === "Received").reduce((s, inv) => s + inv.totalIncTax, 0);

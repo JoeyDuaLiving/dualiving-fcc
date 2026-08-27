@@ -3,7 +3,7 @@ import { eq, and } from "drizzle-orm";
 import { db } from "@/db/client";
 import { companies, jobInvoicePayments, jobs, purchaseOrders, syncErrors, syncRuns } from "@/db/schema";
 import { getAllJobs, getJobInvoices, getJobPurchaseOrders, getTenants } from "@/integrations/buildxact/jobs";
-import { mapBuildxactJobToJob } from "@/integrations/buildxact/mappers";
+import { committedAmountForPo, mapBuildxactJobToJob } from "@/integrations/buildxact/mappers";
 import type { BuildxactJob, BuildxactJobInvoice, BuildxactPurchaseOrder } from "@/integrations/buildxact/types";
 import { rateLimit } from "./rate-limiter";
 
@@ -75,7 +75,7 @@ export async function syncBuildxact(options: { includeDetail?: boolean } = {}): 
           try {
             await rateLimit();
             const pos = await getJobPurchaseOrders(bx.jobId);
-            committedCost = pos.reduce((s, po) => s + po.orderTotalIncTax, 0);
+            committedCost = pos.reduce((s, po) => s + committedAmountForPo(po), 0);
             for (const po of pos) {
               const result = await upsertPurchaseOrder(jobRowId, po);
               if (result.inserted) recordsImported++;
