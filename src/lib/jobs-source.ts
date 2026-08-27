@@ -1,0 +1,150 @@
+import "server-only";
+import { desc, eq } from "drizzle-orm";
+import { db } from "@/db/client";
+import { jobInvoicePayments, jobs, purchaseOrders, syncRuns } from "@/db/schema";
+import type { BuildxactJobInvoice, BuildxactPurchaseOrder } from "@/integrations/buildxact/types";
+import type { Job, JobStatus } from "@/types";
+
+// ---------------------------------------------------------------------------
+// Reads live job data from Postgres (populated by src/sync/buildxact.ts),
+// not from the Buildxact API directly - that keeps every page load fast and
+// off Buildxact's rate limit. The API is only ever called by the sync job
+// now (see /api/sync/buildxact, triggered from Settings or `npm run
+// sync:buildxact`).
+//
+// Scope note (2026-08-27): only the Jobs list + a live job detail view read
+// from the database so far. Cash-required/WIP/margin across the rest of the
+// dashboard (Cash Flow, Alerts, Expenses, etc.) still runs on Phase 1 mock
+// data, since those depend on invoice/bill records that are cross-referenced
+// by ID with the mock dataset and would silently produce wrong numbers if
+// fed real Buildxact job IDs without the matching Xero data behind them.
+// ---------------------------------------------------------------------------
+
+type JobRow = typeof jobs.$inferSelect;
+
+function dbJobToJob(row: JobRow): Job {
+  return {
+    id: row.sourceId, // Buildxact's own job GUID - stable across re-syncs
+    source: "buildxact",
+    sourceId: row.sourceId,
+    jobNumber: row.jobNumber,
+    client: row.client,
+    product: row.product,
+    status: row.status as JobStatus,
+    location: row.location ?? "",
+    contractValue: row.contractValue,
+    approvedVariations: row.approvedVariations,
+    originalBudgetRevenue: row.originalBudgetRevenue,
+    originalBudgetCost: row.originalBudgetCost,
+    actualCost: row.actualCost,
+    committedCost: row.committedCost,
+    remainingForecastCost: row.remainingForecastCost,
+    progressPercent: row.progressPercent,
+    startDate: row.startDate?.toISOString() ?? "",
+    expectedCompletion: row.expectedCompletion?.toISOString() ?? "",
+    contractedCompletion: row.contractedCompletion?.toISOString() ?? "",
+    paymentScheduleId: row.sourceId,
+    marginTargetPercent: row.marginTargetPercent,
+    // Not available at this cost granularity from Buildxact - see
+    // integrations/buildxact/mappers.ts for the same caveat.
+    directCostBreakdown: { labour: 0, materials: 0, subcontractors: 0, freight: 0, engineering: 0, siteCosts: 0, other: 0 },
+  };
+}
+
+export interface LiveJobsListResult {
+  jobs: Job[];
+  source: "live" | "unavailable";
+  error?: string;
+  lastSyncedAt?: string;
+}
+
+/** Reads the synced job list from Postgres. Returns source: "unavailable"
+ * (not an error) when nothing has been synced yet or the database can't be
+ * reached - the caller decides whether to show the mock Jobs/WIP dashboard
+ * instead. */
+export async function loadLiveJobsList(): Promise<LiveJobsListResult> {
+  try {
+    const rows = await db.select().from(jobs).where(eq(jobs.source, "buildxact")).orderBy(desc(jobs.updatedAt));
+    if (rows.length === 0) {
+      return { jobs: [], source: "unavailable", error: "No Buildxact jobs synced yet - run a sync from Settings." };
+    }
+
+    const [lastRun] = await db
+      .select({ finishedAt: syncRuns.finishedAt })
+      .from(syncRuns)
+      .where(eq(syncRuns.source, "buildxact"))
+      .orderBy(desc(syncRuns.startedAt))
+      .limit(1);
+
+    return {
+      jobs: rows.map(dbJobToJob),
+      source: "live",
+      lastSyncedAt: lastRun?.finishedAt?.toISOString(),
+    };
+  } catch (err) {
+    return { jobs: [], source: "unavailable", error: err instanceof Error ? err.message : "Unknown error reading the database" };
+  }
+}
+
+export interface LiveJobDetail {
+  job: Job;
+  cashPosition: {
+    committedCost: number;
+    amountInvoicedToDate: number;
+    cashReceived: number;
+    cashOutstanding: number;
+    wip: number;
+  };
+  purchaseOrders: BuildxactPurchaseOrder[];
+  invoices: BuildxactJobInvoice[];
+}
+
+export interface LiveJobDetailResult {
+  detail: LiveJobDetail | null;
+  source: "live" | "unavailable";
+  error?: string;
+}
+
+/** jobId here is Buildxact's job GUID (job.sourceId), matching the id used
+ * in URLs by loadLiveJobsList() above - not the database's own primary key. */
+export async function loadLiveJobDetail(jobId: string): Promise<LiveJobDetailResult> {
+  try {
+    const [jobRow] = await db
+      .select()
+      .from(jobs)
+      .where(eq(jobs.sourceId, jobId));
+
+    if (!jobRow || jobRow.source !== "buildxact") {
+      return { detail: null, source: "unavailable" };
+    }
+
+    const [poRows, invRows] = await Promise.all([
+      db.select().from(purchaseOrders).where(eq(purchaseOrders.jobId, jobRow.id)),
+      db.select().from(jobInvoicePayments).where(eq(jobInvoicePayments.jobId, jobRow.id)),
+    ]);
+
+    const purchaseOrdersOut = poRows.map((r) => r.raw as BuildxactPurchaseOrder);
+    const invoicesOut = invRows.map((r) => r.raw as BuildxactJobInvoice);
+
+    const amountInvoicedToDate = invRows.reduce((s, r) => s + r.totalIncTax, 0);
+    const cashReceived = invRows.filter((r) => r.status === "Received").reduce((s, r) => s + r.totalIncTax, 0);
+
+    return {
+      detail: {
+        job: dbJobToJob(jobRow),
+        cashPosition: {
+          committedCost: jobRow.committedCost,
+          amountInvoicedToDate,
+          cashReceived,
+          cashOutstanding: amountInvoicedToDate - cashReceived,
+          wip: Math.max(0, jobRow.actualCost + jobRow.committedCost - amountInvoicedToDate),
+        },
+        purchaseOrders: purchaseOrdersOut,
+        invoices: invoicesOut,
+      },
+      source: "live",
+    };
+  } catch (err) {
+    return { detail: null, source: "unavailable", error: err instanceof Error ? err.message : "Unknown error reading the database" };
+  }
+}
