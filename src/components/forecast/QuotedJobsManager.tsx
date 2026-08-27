@@ -80,6 +80,13 @@ export function QuotedJobsManager({ quotedJobs }: { quotedJobs: QuotedJobDTO[] }
         remove any of them below. Delete the quoted job once the real Buildxact job exists, so it stops being counted
         twice.
       </p>
+      <p className="text-sm text-slate-400 mb-4">
+        The forecast also generates COGS outflows for each quoted job: 25% of estimated value 2wk after the
+        Manufacturing stage, another 25% 6wk after that, and a final 25% 2wk after the Final stage - 75% of estimated
+        value as cost, implying a 25% margin. This is calculated automatically from the Manufacturing/Final stage
+        dates below, not editable here - rename or remove either of those two stages and the job stops getting COGS
+        outflows.
+      </p>
 
       {quotedJobs.length > 0 && (
         <div className="space-y-4 mb-5">
