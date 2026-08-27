@@ -5,6 +5,7 @@ import { bankAccounts, bills, customers, invoices, jobs, operatingExpenses, supp
 import {
   getBankAccounts,
   getBankSummary,
+  getBillsForOpex,
   getContacts,
   getExpenseAccounts,
   getInvoices,
@@ -130,10 +131,15 @@ export async function syncXero(): Promise<XeroSyncResult> {
       await logError(undefined, `Bills: ${err instanceof Error ? err.message : String(err)}`);
     }
 
-    // --- Operating expenses (spend transactions, DIRECTCOSTS excluded) ----
+    // --- Operating expenses (bank spend txns + bills, DIRECTCOSTS excluded)
+    // Two Xero objects can both recognise an expense: a direct bank spend
+    // (e.g. card purchases), or a Bill from a supplier (e.g. rent, invoiced
+    // monthly by a property manager) - confirmed live that this tenant's
+    // real "Rent" P&L line comes entirely from Bills, not bank transactions,
+    // so both sources are needed to match what Xero's own P&L shows.
     try {
-      const [expenseAccounts, spendTxns] = await Promise.all([getExpenseAccounts(), getSpendTransactions()]);
-      const { imported, updated } = await upsertOperatingExpenses(expenseAccounts, spendTxns);
+      const [expenseAccounts, spendTxns, opexBills] = await Promise.all([getExpenseAccounts(), getSpendTransactions(), getBillsForOpex()]);
+      const { imported, updated } = await upsertOperatingExpenses(expenseAccounts, spendTxns, opexBills);
       recordsImported += imported;
       recordsUpdated += updated;
     } catch (err) {
@@ -325,7 +331,7 @@ interface OperatingExpenseRow {
   raw: unknown;
 }
 
-async function upsertOperatingExpenses(expenseAccounts: XeroAccount[], spendTxns: XeroBankTransaction[]) {
+async function upsertOperatingExpenses(expenseAccounts: XeroAccount[], spendTxns: XeroBankTransaction[], opexBills: XeroInvoice[]) {
   let imported = 0;
   let updated = 0;
 
@@ -333,36 +339,50 @@ async function upsertOperatingExpenses(expenseAccounts: XeroAccount[], spendTxns
   const rows: OperatingExpenseRow[] = [];
   const monthsByCategory = new Map<string, Set<string>>();
 
+  function addLine(sourceId: string, accountCode: string | undefined, lineAmount: number, description: string | undefined, date: Date, raw: unknown) {
+    const account = accountCode ? accountByCode.get(accountCode) : undefined;
+    // Job costs (DIRECTCOSTS) are already captured via Buildxact's
+    // actualCost/committedCost - counting them again here would
+    // double-count the same spend under a different category.
+    if (!account || account.Type === "DIRECTCOSTS") return;
+
+    const category = account.Name;
+    const monthKey = date.toISOString().slice(0, 7);
+    rows.push({
+      source: "xero",
+      sourceId,
+      category,
+      // This tenant barely uses Xero's OVERHEADS account type (3 of 126
+      // expense accounts - see accounting.ts note), so this mostly
+      // defaults to "variable" rather than a real per-category judgment.
+      classification: account.Type === "OVERHEADS" ? "fixed" : "variable",
+      description: description ?? null,
+      amount: lineAmount,
+      date,
+      recurring: false, // filled in below once every category's spread across months is known
+      raw,
+    });
+
+    if (!monthsByCategory.has(category)) monthsByCategory.set(category, new Set());
+    monthsByCategory.get(category)!.add(monthKey);
+  }
+
   for (const txn of spendTxns) {
     const date = parseXeroDate(txn.Date);
     if (!date) continue;
-    const monthKey = date.toISOString().slice(0, 7);
-
     for (const line of txn.LineItems ?? []) {
-      const account = line.AccountCode ? accountByCode.get(line.AccountCode) : undefined;
-      // Job costs (DIRECTCOSTS) are already captured via Buildxact's
-      // actualCost/committedCost - counting them again here would
-      // double-count the same spend under a different category.
-      if (!account || account.Type === "DIRECTCOSTS") continue;
+      addLine(`${txn.BankTransactionID}-${line.LineItemID}`, line.AccountCode, line.LineAmount, line.Description, date, { transaction: txn, lineItem: line });
+    }
+  }
 
-      const category = account.Name;
-      rows.push({
-        source: "xero",
-        sourceId: `${txn.BankTransactionID}-${line.LineItemID}`,
-        category,
-        // This tenant barely uses Xero's OVERHEADS account type (3 of 126
-        // expense accounts - see accounting.ts note), so this mostly
-        // defaults to "variable" rather than a real per-category judgment.
-        classification: account.Type === "OVERHEADS" ? "fixed" : "variable",
-        description: line.Description ?? null,
-        amount: line.LineAmount,
-        date,
-        recurring: false, // filled in below once every category's spread across months is known
-        raw: { transaction: txn, lineItem: line },
-      });
-
-      if (!monthsByCategory.has(category)) monthsByCategory.set(category, new Set());
-      monthsByCategory.get(category)!.add(monthKey);
+  // Some real recurring expenses (e.g. rent, invoiced monthly by a property
+  // manager) are recognised via a Bill rather than a direct bank spend - see
+  // accounting.ts's getBillsForOpex note.
+  for (const bill of opexBills) {
+    const date = parseXeroDate(bill.Date);
+    if (!date) continue;
+    for (const line of bill.LineItems ?? []) {
+      addLine(`${bill.InvoiceID}-${line.LineItemID}`, line.AccountCode, line.LineAmount, line.Description, date, { bill, lineItem: line });
     }
   }
 

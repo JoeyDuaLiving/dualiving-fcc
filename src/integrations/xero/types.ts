@@ -54,6 +54,7 @@ export interface XeroInvoice {
   TotalTax?: number;
   Payments?: XeroPayment[];
   UpdatedDateUTCString?: string;
+  LineItems?: XeroLineItem[];
 }
 
 export interface XeroLineItem {

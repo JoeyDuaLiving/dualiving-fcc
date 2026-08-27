@@ -92,6 +92,22 @@ export async function getOutstandingBills(): Promise<XeroInvoice[]> {
   return paginateInvoices('Type=="ACCPAY" AND Status!="PAID" AND Status!="VOIDED" AND Status!="DELETED"');
 }
 
+/** Confirmed live 2026-08-27: this tenant pays some real recurring expenses
+ * (rent to "Pro Commercial", $5,106/month) as Bills, not bank transactions -
+ * a bill's own line items carry the account code, same as a bank
+ * transaction's, but the underlying spend event is a different Xero object
+ * entirely. The opex sync (see sync/xero.ts) needs both sources to match
+ * what Xero's own P&L report shows. Scoped to trailing N months like
+ * getSpendTransactions, not the full ~9,000-record AP history - and PAID
+ * bills are included here (unlike getOutstandingBills) since opex reporting
+ * cares about what was actually spent, not just what's still owed. */
+export async function getBillsForOpex(monthsBack = 14): Promise<XeroInvoice[]> {
+  const since = new Date();
+  since.setMonth(since.getMonth() - monthsBack);
+  const where = `Type=="ACCPAY" AND Status!="VOIDED" AND Status!="DELETED" AND Date >= DateTime(${since.getFullYear()},${since.getMonth() + 1},${since.getDate()})`;
+  return paginateInvoices(where);
+}
+
 async function paginateContacts(maxPages = 50): Promise<XeroContact[]> {
   const all: XeroContact[] = [];
   for (let page = 1; page <= maxPages; page++) {
