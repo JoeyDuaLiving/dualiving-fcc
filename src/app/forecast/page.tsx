@@ -2,6 +2,7 @@ import { PageHeader } from "@/components/shared/PageHeader";
 import { StatusPill } from "@/components/shared/Badges";
 import { ForecastClient } from "@/components/forecast/ForecastClient";
 import { ManualStagesManager, type ManualStageDTO } from "@/components/forecast/ManualStagesManager";
+import { QuotedJobsManager } from "@/components/forecast/QuotedJobsManager";
 import { activeJobs, buildForecastItems, currentCashBalance, jobCosting } from "@/lib/calculations";
 import { settings } from "@/lib/mock-data";
 import { buildLiveForecastItems, loadLiveForecastData } from "@/lib/live-forecast";
@@ -53,6 +54,7 @@ export default async function ForecastPage() {
         </div>
       )}
       {isLive && <ManualStagesManager jobOptions={manualStageJobOptions} stagesByJobId={manualStagesByJobId} />}
+      {isLive && <QuotedJobsManager quotedJobs={live.data!.quotedJobs} />}
       <ForecastClient items={items} buffer={settings.minimumCashBuffer} openingBalance={openingBalance} jobOptions={jobOptions} />
     </div>
   );

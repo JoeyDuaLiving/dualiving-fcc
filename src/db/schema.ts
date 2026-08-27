@@ -125,6 +125,40 @@ export const manualPaymentStages = pgTable("manual_payment_stages", {
   updatedAt: timestamp("updated_at").notNull().defaultNow(),
 });
 
+// Quoted jobs - a deal close to starting that doesn't exist in Buildxact
+// yet ("Q1280" style reference, becomes "J1280" once BX creates the real
+// job). Genuinely separate from jobs/manualPaymentStages since there's no
+// jobs.id row to attach to - estimatedContractValue is entered directly
+// rather than read from anywhere, since no system has it yet.
+export const quotedJobs = pgTable("quoted_jobs", {
+  id: id(),
+  reference: text("reference").notNull(), // "Q1280"
+  client: text("client").notNull(),
+  estimatedContractValue: doublePrecision("estimated_contract_value").notNull(),
+  expectedStartDate: timestamp("expected_start_date").notNull(),
+  notes: text("notes"),
+  createdBy: text("created_by"),
+  createdAt: timestamp("created_at").notNull().defaultNow(),
+  updatedAt: timestamp("updated_at").notNull().defaultNow(),
+});
+
+// Defaults to the standard 10% deposit / 40% manufacturing (+2wk) / 45%
+// install (+4wk) / 5% final (+8wk) template when a quoted job is created
+// (see sync-free creation logic in the API route) - stages are fully
+// editable/removable afterward, this is just the starting point.
+export const quotedJobStages = pgTable("quoted_job_stages", {
+  id: id(),
+  quotedJobId: text("quoted_job_id")
+    .notNull()
+    .references(() => quotedJobs.id, { onDelete: "cascade" }),
+  label: text("label").notNull(),
+  percentOfContract: doublePrecision("percent_of_contract").notNull(),
+  triggerDescription: text("trigger_description"),
+  expectedDate: timestamp("expected_date").notNull(),
+  createdAt: timestamp("created_at").notNull().defaultNow(),
+  updatedAt: timestamp("updated_at").notNull().defaultNow(),
+});
+
 export const auditLogs = pgTable("audit_logs", {
   id: id(),
   action: text("action").notNull(), // "sync" | "manual_adjustment" | "login" | "settings_change"

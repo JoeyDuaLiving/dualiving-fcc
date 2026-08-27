@@ -15,6 +15,7 @@ import {
 } from "./xero-source";
 import { liveExpectedDeposit, loadLiveOpenOpportunities, type LiveOpportunity } from "./ghl-source";
 import { loadManualStages, type ManualStageRow } from "./manual-stages-source";
+import { loadQuotedJobs, type QuotedJobDTO } from "./quoted-jobs-source";
 
 // ---------------------------------------------------------------------------
 // Live equivalent of the forecast/alerts engine in calculations.ts, built
@@ -43,6 +44,7 @@ export interface LiveForecastData {
   opportunities: LiveOpportunity[];
   operatingExpenses: LiveOperatingExpense[];
   manualStagesByJobId: Map<string, ManualStageRow[]>;
+  quotedJobs: QuotedJobDTO[];
   currentCashBalance: number;
 }
 
@@ -58,7 +60,7 @@ export interface LoadLiveForecastResult {
  * since that only removes the recurring-opex forecast items, not the whole
  * picture. */
 export async function loadLiveForecastData(): Promise<LoadLiveForecastResult> {
-  const [jobsResult, receivablesResult, payablesResult, bankResult, opexResult, oppsResult, manualStagesResult] = await Promise.all([
+  const [jobsResult, receivablesResult, payablesResult, bankResult, opexResult, oppsResult, manualStagesResult, quotedJobsResult] = await Promise.all([
     loadLiveActiveJobsCashPositions(),
     loadLiveReceivables(),
     loadLivePayables(),
@@ -66,6 +68,7 @@ export async function loadLiveForecastData(): Promise<LoadLiveForecastResult> {
     loadLiveOperatingExpenses(),
     loadLiveOpenOpportunities(),
     loadManualStages(),
+    loadQuotedJobs(),
   ]);
 
   if (jobsResult.source !== "live" || receivablesResult.source !== "live" || payablesResult.source !== "live" || bankResult.source !== "live") {
@@ -81,6 +84,7 @@ export async function loadLiveForecastData(): Promise<LoadLiveForecastResult> {
       opportunities: oppsResult.source === "live" ? oppsResult.opportunities : [],
       operatingExpenses: opexResult.source === "live" ? opexResult.expenses : [],
       manualStagesByJobId: manualStagesResult.source === "live" ? manualStagesResult.stagesByJobId : new Map(),
+      quotedJobs: quotedJobsResult.source === "live" ? quotedJobsResult.quotedJobs : [],
       currentCashBalance: bankResult.totalBalance,
     },
     source: "live",
@@ -196,6 +200,28 @@ export function buildLiveForecastItems(data: LiveForecastData): ForecastItem[] {
         confidence: "forecast",
         status: stage.triggerDescription ? `Expected on ${stage.triggerDescription.toLowerCase()}` : "Manually entered payment stage",
         description: `${row.job.jobNumber} ${row.job.client} - ${stage.label} (not yet invoiced)`,
+      });
+    }
+  }
+
+  // Forecast inflows: quoted jobs close to starting, not yet a real
+  // Buildxact job ("Q1280" style reference). No jobId - there's no
+  // jobs.id row to link to yet, and no cost estimate, since none was
+  // entered and none should be guessed.
+  for (const quoted of data.quotedJobs) {
+    for (const stage of quoted.stages) {
+      items.push({
+        id: `live-fc-quoted-${stage.id}`,
+        source: "manual",
+        sourceId: stage.id,
+        date: clampToday(stage.expectedDate),
+        amount: Math.round((stage.percentOfContract / 100) * quoted.estimatedContractValue),
+        direction: "inflow",
+        category: "customer_receipt",
+        party: quoted.client,
+        confidence: "forecast",
+        status: stage.triggerDescription || "Quoted - not yet a Buildxact job",
+        description: `${quoted.reference} ${quoted.client} - ${stage.label} (quoted, not yet a job)`,
       });
     }
   }
