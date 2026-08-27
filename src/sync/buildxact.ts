@@ -17,10 +17,14 @@ import { rateLimit } from "./rate-limiter";
 //
 // Rate-limit shape: 1 call for tenants, ~1-2 calls (paginated) for the job
 // list, then 2 calls per job (purchase orders + invoices) when
-// includeDetail is true. For ~100 jobs that's ~200 calls, paced by
-// rateLimit() to stay under Buildxact's 100/30s limit - a full sync takes
-// roughly 200/80 * 30s =~ 75s. Fine for a manual "Sync Now" or a cron job;
-// not something to trigger on every page load.
+// includeDetail is true - confirmed live to run past 300s for ~110 jobs
+// once real per-request latency (not just rate-limit pacing) is accounted
+// for, which is why jobs Buildxact has marked complete (`isCompleted`) skip
+// the detail fetch entirely: their purchase orders and invoices are done
+// changing, so re-fetching them on every sync buys nothing for a live cash
+// dashboard. Their last-synced committedCost is left as-is rather than
+// reset to 0. In_progress and contracted jobs (the ones whose cash position
+// can still move) always get the full detail fetch.
 // ---------------------------------------------------------------------------
 
 export interface SyncResult {
@@ -65,7 +69,7 @@ export async function syncBuildxact(options: { includeDetail?: boolean } = {}): 
         if (inserted) recordsImported++;
         else recordsUpdated++;
 
-        if (includeDetail) {
+        if (includeDetail && !bx.isCompleted) {
           let committedCost = 0;
 
           try {
