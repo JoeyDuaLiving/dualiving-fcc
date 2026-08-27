@@ -1,5 +1,5 @@
 import "server-only";
-import { desc, eq, inArray } from "drizzle-orm";
+import { and, desc, eq, inArray } from "drizzle-orm";
 import { db } from "@/db/client";
 import { jobInvoicePayments, jobs, purchaseOrders, syncRuns } from "@/db/schema";
 import type { BuildxactJobInvoice, BuildxactPurchaseOrder } from "@/integrations/buildxact/types";
@@ -53,6 +53,10 @@ function dbJobToJob(row: JobRow): Job {
 
 export interface LiveJobsListResult {
   jobs: Job[];
+  // Keyed by Job.id (Buildxact sourceId) - sum of that job's invoice/payment
+  // records with status "Received" (payment actually received), for a
+  // to-date profit figure that isn't just the full contract value.
+  cashReceivedByJobId: Map<string, number>;
   source: "live" | "unavailable";
   error?: string;
   lastSyncedAt?: string;
@@ -69,23 +73,48 @@ export async function loadLiveJobsList(): Promise<LiveJobsListResult> {
     // happened to touch and isn't a meaningful business order.
     const rows = await db.select().from(jobs).where(eq(jobs.source, "buildxact")).orderBy(desc(jobs.startDate));
     if (rows.length === 0) {
-      return { jobs: [], source: "unavailable", error: "No Buildxact jobs synced yet - run a sync from Settings." };
+      return { jobs: [], cashReceivedByJobId: new Map(), source: "unavailable", error: "No Buildxact jobs synced yet - run a sync from Settings." };
     }
 
-    const [lastRun] = await db
-      .select({ finishedAt: syncRuns.finishedAt })
-      .from(syncRuns)
-      .where(eq(syncRuns.source, "buildxact"))
-      .orderBy(desc(syncRuns.startedAt))
-      .limit(1);
+    const [lastRun, invRows] = await Promise.all([
+      db
+        .select({ finishedAt: syncRuns.finishedAt })
+        .from(syncRuns)
+        .where(eq(syncRuns.source, "buildxact"))
+        .orderBy(desc(syncRuns.startedAt))
+        .limit(1)
+        .then((r) => r[0]),
+      db
+        .select({ jobId: jobInvoicePayments.jobId, totalIncTax: jobInvoicePayments.totalIncTax })
+        .from(jobInvoicePayments)
+        .where(
+          and(
+            inArray(
+              jobInvoicePayments.jobId,
+              rows.map((r) => r.id)
+            ),
+            eq(jobInvoicePayments.status, "Received")
+          )
+        ),
+    ]);
+
+    const sourceIdByRowId = new Map(rows.map((r) => [r.id, r.sourceId]));
+    const cashReceivedByJobId = new Map<string, number>();
+    for (const inv of invRows) {
+      if (!inv.jobId) continue;
+      const sourceId = sourceIdByRowId.get(inv.jobId);
+      if (!sourceId) continue;
+      cashReceivedByJobId.set(sourceId, (cashReceivedByJobId.get(sourceId) ?? 0) + inv.totalIncTax);
+    }
 
     return {
       jobs: rows.map(dbJobToJob),
+      cashReceivedByJobId,
       source: "live",
       lastSyncedAt: lastRun?.finishedAt?.toISOString(),
     };
   } catch (err) {
-    return { jobs: [], source: "unavailable", error: err instanceof Error ? err.message : "Unknown error reading the database" };
+    return { jobs: [], cashReceivedByJobId: new Map(), source: "unavailable", error: err instanceof Error ? err.message : "Unknown error reading the database" };
   }
 }
 

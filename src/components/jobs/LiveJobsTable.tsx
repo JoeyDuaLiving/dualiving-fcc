@@ -1,7 +1,6 @@
 import Link from "next/link";
 import { formatAUD, formatDateAU } from "@/lib/format";
 import { StatusPill } from "@/components/shared/Badges";
-import { jobCosting } from "@/lib/calculations";
 import type { Job, JobStatus } from "@/types";
 
 const STATUS_LABEL: Record<JobStatus, string> = {
@@ -19,7 +18,7 @@ function statusTone(status: JobStatus): "neutral" | "good" | "warn" {
   return "neutral";
 }
 
-export function LiveJobsTable({ jobs }: { jobs: Job[] }) {
+export function LiveJobsTable({ jobs, cashReceivedByJobId }: { jobs: Job[]; cashReceivedByJobId: Record<string, number> }) {
   return (
     <div className="overflow-x-auto">
       <table className="w-full text-sm">
@@ -38,7 +37,12 @@ export function LiveJobsTable({ jobs }: { jobs: Job[] }) {
         </thead>
         <tbody className="divide-y divide-slate-800/60">
           {jobs.map((job) => {
-            const costing = jobCosting(job);
+            // To-date profit against cash actually received, not the full
+            // contract value - a job at 20% progress with $0 received isn't
+            // "profitable" just because its full contract exceeds its cost
+            // so far.
+            const cashReceived = cashReceivedByJobId[job.id] ?? 0;
+            const profit = cashReceived - (job.actualCost + job.committedCost);
             return (
             <tr key={job.id} className="hover:bg-slate-900/60">
               <td className="py-2.5">
@@ -57,8 +61,8 @@ export function LiveJobsTable({ jobs }: { jobs: Job[] }) {
               <td className="py-2.5 text-right tabular-nums text-slate-300">{formatAUD(job.contractValue, { compact: true })}</td>
               <td className="py-2.5 text-right tabular-nums text-slate-300">{formatAUD(job.actualCost, { compact: true })}</td>
               <td className="py-2.5 text-right tabular-nums text-slate-300">{formatAUD(job.committedCost, { compact: true })}</td>
-              <td className={`py-2.5 text-right tabular-nums font-medium ${costing.forecastGrossProfit < 0 ? "text-red-400" : "text-emerald-400"}`}>
-                {formatAUD(costing.forecastGrossProfit, { compact: true })}
+              <td className={`py-2.5 text-right tabular-nums font-medium ${profit < 0 ? "text-red-400" : "text-emerald-400"}`}>
+                {formatAUD(profit, { compact: true })}
               </td>
               <td className="py-2.5 text-right whitespace-nowrap text-slate-400">
                 {job.expectedCompletion ? formatDateAU(job.expectedCompletion) : "—"}
