@@ -33,8 +33,20 @@ export function mapBuildxactStatus(status: string, isCompleted: boolean, progres
   return "in_progress";
 }
 
+const JOB_NUMBER_SEGMENT_RE = /^J\d{3,5}$/i;
+
 export function mapBuildxactJobToJob(bx: BuildxactJob): Job {
-  const [jobNumber, ...clientParts] = bx.number.split(" - ");
+  // Almost always "J1156 - Jones" (job number first), but at least one real
+  // record in this tenant is "STOCK - J1057" (a placeholder/stock job) -
+  // taking the first segment unconditionally would read "STOCK" as the job
+  // number and "J1057" as the client, which is exactly backwards and breaks
+  // every job-number cross-reference (Xero job-code matching, URLs, etc.).
+  // Find whichever segment actually looks like a job number instead of
+  // assuming position.
+  const segments = bx.number.split(" - ");
+  const jobNumberIndex = segments.findIndex((s) => JOB_NUMBER_SEGMENT_RE.test(s.trim()));
+  const jobNumber = jobNumberIndex >= 0 ? segments[jobNumberIndex] : segments[0];
+  const clientParts = jobNumberIndex >= 0 ? segments.filter((_, i) => i !== jobNumberIndex) : segments.slice(1);
   return {
     id: bx.jobId,
     source: "buildxact",

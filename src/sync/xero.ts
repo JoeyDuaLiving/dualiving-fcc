@@ -50,6 +50,28 @@ function extractJobNumber(text: string | undefined): string | null {
   return match ? match[0].toUpperCase() : null;
 }
 
+/** Confirmed live 2026-08-28: this tenant has just started using a "Job
+ * Codes" Xero tracking category (real per-line-item tagging, e.g. "J1259"
+ * or "J1247 - Frizzell" - not every option is a job, some are overhead
+ * buckets like "Administration"), covering ~61% of recent AP bills already.
+ * That's a real, intentional match, not a guess off free text, so it takes
+ * priority over the InvoiceNumber/Reference regex - the regex stays as a
+ * fallback for older bills entered before tracking was adopted. */
+function extractJobNumberFromTracking(item: XeroInvoice): string | null {
+  for (const line of item.LineItems ?? []) {
+    for (const tracking of line.Tracking ?? []) {
+      if (tracking.Name !== "Job Codes") continue;
+      const jobNumber = extractJobNumber(tracking.Option);
+      if (jobNumber) return jobNumber;
+    }
+  }
+  return null;
+}
+
+function resolveJobNumber(item: XeroInvoice): string | null {
+  return extractJobNumberFromTracking(item) ?? extractJobNumber(item.InvoiceNumber) ?? extractJobNumber(item.Reference);
+}
+
 export async function syncXero(): Promise<XeroSyncResult> {
   const startedAt = Date.now();
   const [run] = await db.insert(syncRuns).values({ source: "xero", status: "running" }).returning();
@@ -227,7 +249,7 @@ async function upsertInvoices(arInvoices: XeroInvoice[], customerIdBySourceId: M
       .insert(invoices)
       .values(
         batch.map((inv) => {
-          const jobNumber = extractJobNumber(inv.InvoiceNumber) ?? extractJobNumber(inv.Reference);
+          const jobNumber = resolveJobNumber(inv);
           return {
             source: "xero",
             sourceId: inv.InvoiceID,
@@ -278,7 +300,7 @@ async function upsertBills(apBills: XeroInvoice[], supplierIdBySourceId: Map<str
       .insert(bills)
       .values(
         batch.map((bill) => {
-          const jobNumber = extractJobNumber(bill.InvoiceNumber) ?? extractJobNumber(bill.Reference);
+          const jobNumber = resolveJobNumber(bill);
           return {
             source: "xero",
             sourceId: bill.InvoiceID,

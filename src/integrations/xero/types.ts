@@ -57,11 +57,18 @@ export interface XeroInvoice {
   LineItems?: XeroLineItem[];
 }
 
+export interface XeroTracking {
+  Name: string; // e.g. "Job Codes", "BX Categories" - tracking category name
+  Option: string; // e.g. "J1247 - Frizzell", "Administration"
+  TrackingCategoryID?: string;
+}
+
 export interface XeroLineItem {
   LineItemID: string;
   Description?: string;
   AccountCode?: string;
   LineAmount: number;
+  Tracking?: XeroTracking[];
 }
 
 export interface XeroBankTransaction {
