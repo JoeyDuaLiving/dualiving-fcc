@@ -315,7 +315,9 @@ function MockJobDetail({ job }: { job: Job }) {
 }
 
 function LiveJobDetailView({ detail }: { detail: LiveJobDetail }) {
-  const { job, cashPosition, purchaseOrders, invoices } = detail;
+  const { job, cashPosition, purchaseOrders, invoices, xeroBills, xeroInvoices } = detail;
+  const xeroBillsTotal = xeroBills.reduce((s, b) => s + b.amount, 0);
+  const xeroInvoicesTotal = xeroInvoices.reduce((s, inv) => s + inv.amount, 0);
 
   return (
     <div>
@@ -411,6 +413,74 @@ function LiveJobDetailView({ detail }: { detail: LiveJobDetail }) {
               {invoices.length === 0 && (
                 <tr>
                   <td colSpan={4} className="py-4 text-center text-slate-500">No invoices raised yet.</td>
+                </tr>
+              )}
+            </tbody>
+          </table>
+        </Card>
+      </div>
+
+      <div className="mb-6 rounded-lg border border-slate-800 bg-slate-900/40 px-4 py-3 text-xs text-slate-400">
+        The two tables below are Xero bills/invoices matched to this job by job code (Xero&rsquo;s &ldquo;Job
+        Codes&rdquo; tracking category, or a job-number-in-description match for older records) - shown as a
+        cross-check against the Buildxact figures above, not a source for them.
+      </div>
+
+      <div className="grid lg:grid-cols-2 gap-6">
+        <Card title="Xero bills (matched)" action={<span className="text-xs text-slate-500">{xeroBills.length} &middot; {formatAUD(xeroBillsTotal, { compact: true })}</span>}>
+          <table className="w-full text-sm">
+            <thead>
+              <tr className="text-left text-xs text-slate-500 border-b border-slate-800">
+                <th className="pb-2 font-medium">Bill</th>
+                <th className="pb-2 font-medium">Supplier</th>
+                <th className="pb-2 font-medium text-right">Amount</th>
+                <th className="pb-2 font-medium text-right">Date</th>
+                <th className="pb-2 font-medium text-right">Status</th>
+              </tr>
+            </thead>
+            <tbody className="divide-y divide-slate-800/60">
+              {xeroBills.map((b) => (
+                <tr key={b.id}>
+                  <td className="py-2 text-slate-300">{b.number}</td>
+                  <td className="py-2 text-slate-400">{b.party}</td>
+                  <td className="py-2 text-right tabular-nums text-slate-300">{formatAUD(b.amount)}</td>
+                  <td className="py-2 text-right text-slate-400 whitespace-nowrap">{b.date ? formatDateAU(b.date) : "—"}</td>
+                  <td className="py-2 text-right text-slate-400">{b.status}</td>
+                </tr>
+              ))}
+              {xeroBills.length === 0 && (
+                <tr>
+                  <td colSpan={5} className="py-4 text-center text-slate-500">No Xero bills matched to this job.</td>
+                </tr>
+              )}
+            </tbody>
+          </table>
+        </Card>
+
+        <Card title="Xero invoices (matched)" action={<span className="text-xs text-slate-500">{xeroInvoices.length} &middot; {formatAUD(xeroInvoicesTotal, { compact: true })}</span>}>
+          <table className="w-full text-sm">
+            <thead>
+              <tr className="text-left text-xs text-slate-500 border-b border-slate-800">
+                <th className="pb-2 font-medium">Invoice</th>
+                <th className="pb-2 font-medium">Contact</th>
+                <th className="pb-2 font-medium text-right">Amount</th>
+                <th className="pb-2 font-medium text-right">Date</th>
+                <th className="pb-2 font-medium text-right">Status</th>
+              </tr>
+            </thead>
+            <tbody className="divide-y divide-slate-800/60">
+              {xeroInvoices.map((inv) => (
+                <tr key={inv.id}>
+                  <td className="py-2 text-slate-300">{inv.number}</td>
+                  <td className="py-2 text-slate-400">{inv.party}</td>
+                  <td className="py-2 text-right tabular-nums text-slate-300">{formatAUD(inv.amount)}</td>
+                  <td className="py-2 text-right text-slate-400 whitespace-nowrap">{inv.date ? formatDateAU(inv.date) : "—"}</td>
+                  <td className="py-2 text-right text-slate-400">{inv.status}</td>
+                </tr>
+              ))}
+              {xeroInvoices.length === 0 && (
+                <tr>
+                  <td colSpan={5} className="py-4 text-center text-slate-500">No Xero invoices matched to this job.</td>
                 </tr>
               )}
             </tbody>

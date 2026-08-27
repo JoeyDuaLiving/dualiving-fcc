@@ -18,7 +18,17 @@ function statusTone(status: JobStatus): "neutral" | "good" | "warn" {
   return "neutral";
 }
 
-export function LiveJobsTable({ jobs, cashReceivedByJobId }: { jobs: Job[]; cashReceivedByJobId: Record<string, number> }) {
+export function LiveJobsTable({
+  jobs,
+  cashReceivedByJobId,
+  xeroBillsByJobId,
+  xeroInvoicesByJobId,
+}: {
+  jobs: Job[];
+  cashReceivedByJobId: Record<string, number>;
+  xeroBillsByJobId: Record<string, number>;
+  xeroInvoicesByJobId: Record<string, number>;
+}) {
   return (
     <div className="overflow-x-auto">
       <table className="w-full text-sm">
@@ -31,6 +41,8 @@ export function LiveJobsTable({ jobs, cashReceivedByJobId }: { jobs: Job[]; cash
             <th className="pb-2 font-medium text-right">Contract</th>
             <th className="pb-2 font-medium text-right">Actual cost</th>
             <th className="pb-2 font-medium text-right">Committed</th>
+            <th className="pb-2 font-medium text-right">Xero bills</th>
+            <th className="pb-2 font-medium text-right">Xero invoices</th>
             <th className="pb-2 font-medium text-right">Profit</th>
             <th className="pb-2 font-medium text-right">Completion</th>
           </tr>
@@ -43,6 +55,8 @@ export function LiveJobsTable({ jobs, cashReceivedByJobId }: { jobs: Job[]; cash
             // so far.
             const cashReceived = cashReceivedByJobId[job.id] ?? 0;
             const profit = cashReceived - (job.actualCost + job.committedCost);
+            const xeroBills = xeroBillsByJobId[job.id] ?? 0;
+            const xeroInvoices = xeroInvoicesByJobId[job.id] ?? 0;
             return (
             <tr key={job.id} className="hover:bg-slate-900/60">
               <td className="py-2.5">
@@ -61,6 +75,8 @@ export function LiveJobsTable({ jobs, cashReceivedByJobId }: { jobs: Job[]; cash
               <td className="py-2.5 text-right tabular-nums text-slate-300">{formatAUD(job.contractValue, { compact: true })}</td>
               <td className="py-2.5 text-right tabular-nums text-slate-300">{formatAUD(job.actualCost, { compact: true })}</td>
               <td className="py-2.5 text-right tabular-nums text-slate-300">{formatAUD(job.committedCost, { compact: true })}</td>
+              <td className="py-2.5 text-right tabular-nums text-slate-500">{formatAUD(xeroBills, { compact: true })}</td>
+              <td className="py-2.5 text-right tabular-nums text-slate-500">{formatAUD(xeroInvoices, { compact: true })}</td>
               <td className={`py-2.5 text-right tabular-nums font-medium ${profit < 0 ? "text-red-400" : "text-emerald-400"}`}>
                 {formatAUD(profit, { compact: true })}
               </td>
@@ -72,7 +88,7 @@ export function LiveJobsTable({ jobs, cashReceivedByJobId }: { jobs: Job[]; cash
           })}
           {jobs.length === 0 && (
             <tr>
-              <td colSpan={9} className="py-6 text-center text-slate-500">
+              <td colSpan={11} className="py-6 text-center text-slate-500">
                 No jobs returned.
               </td>
             </tr>

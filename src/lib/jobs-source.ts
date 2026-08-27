@@ -1,8 +1,9 @@
 import "server-only";
 import { and, desc, eq, inArray } from "drizzle-orm";
 import { db } from "@/db/client";
-import { jobInvoicePayments, jobs, purchaseOrders, syncRuns } from "@/db/schema";
+import { bills, invoices, jobInvoicePayments, jobs, purchaseOrders, syncRuns } from "@/db/schema";
 import type { BuildxactJobInvoice, BuildxactPurchaseOrder } from "@/integrations/buildxact/types";
+import type { XeroInvoice } from "@/integrations/xero/types";
 import type { Job, JobStatus } from "@/types";
 
 // ---------------------------------------------------------------------------
@@ -57,6 +58,12 @@ export interface LiveJobsListResult {
   // records with status "Received" (payment actually received), for a
   // to-date profit figure that isn't just the full contract value.
   cashReceivedByJobId: Map<string, number>;
+  // Xero bills/invoices matched to this job by job code (see
+  // src/sync/xero.ts resolveJobNumber) - shown as a reference cross-check
+  // against Buildxact's own actualCost/contractValue, not used in any
+  // calculation on this page. Keyed by Job.id (Buildxact sourceId).
+  xeroBillsByJobId: Map<string, number>;
+  xeroInvoicesByJobId: Map<string, number>;
   source: "live" | "unavailable";
   error?: string;
   lastSyncedAt?: string;
@@ -73,10 +80,18 @@ export async function loadLiveJobsList(): Promise<LiveJobsListResult> {
     // happened to touch and isn't a meaningful business order.
     const rows = await db.select().from(jobs).where(eq(jobs.source, "buildxact")).orderBy(desc(jobs.startDate));
     if (rows.length === 0) {
-      return { jobs: [], cashReceivedByJobId: new Map(), source: "unavailable", error: "No Buildxact jobs synced yet - run a sync from Settings." };
+      return {
+        jobs: [],
+        cashReceivedByJobId: new Map(),
+        xeroBillsByJobId: new Map(),
+        xeroInvoicesByJobId: new Map(),
+        source: "unavailable",
+        error: "No Buildxact jobs synced yet - run a sync from Settings.",
+      };
     }
 
-    const [lastRun, invRows] = await Promise.all([
+    const jobRowIds = rows.map((r) => r.id);
+    const [lastRun, invRows, billRows, xeroInvoiceRows] = await Promise.all([
       db
         .select({ finishedAt: syncRuns.finishedAt })
         .from(syncRuns)
@@ -87,15 +102,15 @@ export async function loadLiveJobsList(): Promise<LiveJobsListResult> {
       db
         .select({ jobId: jobInvoicePayments.jobId, totalIncTax: jobInvoicePayments.totalIncTax })
         .from(jobInvoicePayments)
-        .where(
-          and(
-            inArray(
-              jobInvoicePayments.jobId,
-              rows.map((r) => r.id)
-            ),
-            eq(jobInvoicePayments.status, "Received")
-          )
-        ),
+        .where(and(inArray(jobInvoicePayments.jobId, jobRowIds), eq(jobInvoicePayments.status, "Received"))),
+      db
+        .select({ jobId: bills.jobId, amount: bills.amount })
+        .from(bills)
+        .where(and(inArray(bills.jobId, jobRowIds), eq(bills.source, "xero"))),
+      db
+        .select({ jobId: invoices.jobId, amount: invoices.amount })
+        .from(invoices)
+        .where(and(inArray(invoices.jobId, jobRowIds), eq(invoices.source, "xero"))),
     ]);
 
     const sourceIdByRowId = new Map(rows.map((r) => [r.id, r.sourceId]));
@@ -106,15 +121,38 @@ export async function loadLiveJobsList(): Promise<LiveJobsListResult> {
       if (!sourceId) continue;
       cashReceivedByJobId.set(sourceId, (cashReceivedByJobId.get(sourceId) ?? 0) + inv.totalIncTax);
     }
+    const xeroBillsByJobId = new Map<string, number>();
+    for (const b of billRows) {
+      if (!b.jobId) continue;
+      const sourceId = sourceIdByRowId.get(b.jobId);
+      if (!sourceId) continue;
+      xeroBillsByJobId.set(sourceId, (xeroBillsByJobId.get(sourceId) ?? 0) + b.amount);
+    }
+    const xeroInvoicesByJobId = new Map<string, number>();
+    for (const inv of xeroInvoiceRows) {
+      if (!inv.jobId) continue;
+      const sourceId = sourceIdByRowId.get(inv.jobId);
+      if (!sourceId) continue;
+      xeroInvoicesByJobId.set(sourceId, (xeroInvoicesByJobId.get(sourceId) ?? 0) + inv.amount);
+    }
 
     return {
       jobs: rows.map(dbJobToJob),
       cashReceivedByJobId,
+      xeroBillsByJobId,
+      xeroInvoicesByJobId,
       source: "live",
       lastSyncedAt: lastRun?.finishedAt?.toISOString(),
     };
   } catch (err) {
-    return { jobs: [], cashReceivedByJobId: new Map(), source: "unavailable", error: err instanceof Error ? err.message : "Unknown error reading the database" };
+    return {
+      jobs: [],
+      cashReceivedByJobId: new Map(),
+      xeroBillsByJobId: new Map(),
+      xeroInvoicesByJobId: new Map(),
+      source: "unavailable",
+      error: err instanceof Error ? err.message : "Unknown error reading the database",
+    };
   }
 }
 
@@ -176,6 +214,15 @@ export async function loadLiveActiveJobsCashPositions(): Promise<LiveJobsCashPos
   }
 }
 
+export interface XeroMatchedRecord {
+  id: string;
+  number: string;
+  party: string;
+  amount: number;
+  date: string;
+  status: string;
+}
+
 export interface LiveJobDetail {
   job: Job;
   cashPosition: {
@@ -187,6 +234,11 @@ export interface LiveJobDetail {
   };
   purchaseOrders: BuildxactPurchaseOrder[];
   invoices: BuildxactJobInvoice[];
+  // Xero bills/invoices matched to this job by job code - a cross-check
+  // against the Buildxact figures above, not a source for them. See
+  // src/sync/xero.ts resolveJobNumber for how the match is made.
+  xeroBills: XeroMatchedRecord[];
+  xeroInvoices: XeroMatchedRecord[];
 }
 
 export interface LiveJobDetailResult {
@@ -208,9 +260,11 @@ export async function loadLiveJobDetail(jobId: string): Promise<LiveJobDetailRes
       return { detail: null, source: "unavailable" };
     }
 
-    const [poRows, invRows] = await Promise.all([
+    const [poRows, invRows, xeroBillRows, xeroInvoiceRows] = await Promise.all([
       db.select().from(purchaseOrders).where(eq(purchaseOrders.jobId, jobRow.id)),
       db.select().from(jobInvoicePayments).where(eq(jobInvoicePayments.jobId, jobRow.id)),
+      db.select().from(bills).where(and(eq(bills.jobId, jobRow.id), eq(bills.source, "xero"))),
+      db.select().from(invoices).where(and(eq(invoices.jobId, jobRow.id), eq(invoices.source, "xero"))),
     ]);
 
     const purchaseOrdersOut = poRows.map((r) => r.raw as BuildxactPurchaseOrder);
@@ -218,6 +272,23 @@ export async function loadLiveJobDetail(jobId: string): Promise<LiveJobDetailRes
 
     const amountInvoicedToDate = invRows.reduce((s, r) => s + r.totalIncTax, 0);
     const cashReceived = invRows.filter((r) => r.status === "Received").reduce((s, r) => s + r.totalIncTax, 0);
+
+    const xeroBillsOut: XeroMatchedRecord[] = xeroBillRows.map((b) => ({
+      id: b.id,
+      number: b.billNumber,
+      party: (b.raw as XeroInvoice)?.Contact?.Name ?? "Unknown",
+      amount: b.amount,
+      date: b.billDate ? b.billDate.toISOString().slice(0, 10) : "",
+      status: b.status,
+    }));
+    const xeroInvoicesOut: XeroMatchedRecord[] = xeroInvoiceRows.map((inv) => ({
+      id: inv.id,
+      number: inv.invoiceNumber,
+      party: (inv.raw as XeroInvoice)?.Contact?.Name ?? "Unknown",
+      amount: inv.amount,
+      date: inv.issueDate ? inv.issueDate.toISOString().slice(0, 10) : "",
+      status: inv.status,
+    }));
 
     return {
       detail: {
@@ -231,6 +302,8 @@ export async function loadLiveJobDetail(jobId: string): Promise<LiveJobDetailRes
         },
         purchaseOrders: purchaseOrdersOut,
         invoices: invoicesOut,
+        xeroBills: xeroBillsOut,
+        xeroInvoices: xeroInvoicesOut,
       },
       source: "live",
     };

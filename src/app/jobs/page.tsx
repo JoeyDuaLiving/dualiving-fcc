@@ -76,9 +76,16 @@ export default async function JobsPage() {
             Job number, client, status, progress, contract value, actual cost and committed cost (from live purchase
             orders) are synced from Buildxact. Profit is cash actually received to date (invoices with status
             &ldquo;Received&rdquo;) minus actual + committed cost - not the full contract value, so it stays
-            meaningful before a job is finished (open a job for its full purchase order / invoice breakdown).
+            meaningful before a job is finished. &ldquo;Xero bills&rdquo; and &ldquo;Xero invoices&rdquo; are the
+            Xero-side totals matched to this job by job code - a cross-check against the Buildxact figures, not
+            used in the profit calculation (open a job for the full breakdown and matched transactions).
           </p>
-          <LiveJobsTable jobs={live.jobs} cashReceivedByJobId={Object.fromEntries(live.cashReceivedByJobId)} />
+          <LiveJobsTable
+            jobs={live.jobs}
+            cashReceivedByJobId={Object.fromEntries(live.cashReceivedByJobId)}
+            xeroBillsByJobId={Object.fromEntries(live.xeroBillsByJobId)}
+            xeroInvoicesByJobId={Object.fromEntries(live.xeroInvoicesByJobId)}
+          />
         </Card>
       )}
 
