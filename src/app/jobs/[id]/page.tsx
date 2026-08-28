@@ -348,7 +348,6 @@ function LiveJobDetailView({ detail }: { detail: LiveJobDetail }) {
           </p>
         </div>
         <div className="text-right text-xs text-slate-500">
-          <div>Progress {job.progressPercent}%</div>
           {job.expectedCompletion && <div>Target completion {formatDateAU(job.expectedCompletion)}</div>}
         </div>
       </div>
@@ -374,11 +373,18 @@ function LiveJobDetailView({ detail }: { detail: LiveJobDetail }) {
         )}
       </div>
 
-      <div className="grid grid-cols-2 md:grid-cols-4 lg:grid-cols-7 gap-3 mb-6">
+      <div className="grid grid-cols-2 md:grid-cols-3 gap-3 mb-6">
+        <StatCard label="Progress" value={`${job.progressPercent}%`} />
         <StatCard label="Contract value" value={formatAUD(job.contractValue)} sub={`incl. ${formatAUD(job.approvedVariations)} variations`} />
         <StatCard label="Estimated cost" value={estimatedCost !== null ? formatAUD(estimatedCost) : "—"} sub={estimatedCost !== null ? "Buildxact estimate" : "No estimate on this job"} />
         <StatCard label="Actual cost" value={formatAUD(job.actualCost)} />
         <StatCard label="Committed cost" value={formatAUD(cashPosition.committedCost)} sub={`${purchaseOrders.length} purchase orders`} />
+        <StatCard
+          label="Profit to date"
+          value={revisedRevenue > 0 ? `${profitToDatePercent.toFixed(1)}%` : "N/A"}
+          sub={revisedRevenue > 0 ? "vs actual + committed cost" : "No contract value recorded"}
+          tone={revisedRevenue > 0 ? (profitToDatePercent < 0 ? "bad" : "good") : "default"}
+        />
         <StatCard label="Cash received" value={formatAUD(cashPosition.cashReceived)} sub={`of ${formatAUD(cashPosition.amountInvoicedToDate)} invoiced`} />
         <StatCard label="Xero bills" value={formatAUD(xeroBillsTotal)} sub={`${xeroBills.length} matched`} />
         <StatCard label="Xero invoices" value={formatAUD(xeroInvoicesTotal)} sub={`${xeroInvoices.length} matched`} />
