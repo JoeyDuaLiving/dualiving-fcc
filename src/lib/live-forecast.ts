@@ -367,19 +367,15 @@ export function generateLiveAlerts(
   const MINIMUM_ALERT_JOB_VALUE = 25_000;
   const significantJobRows = data.jobRows.filter((row) => jobCosting(row.job).revisedRevenue >= MINIMUM_ALERT_JOB_VALUE);
 
+  // A per-job "requires additional cash to finish" alert used to fire here
+  // for every active job with a gap between committed cost and expected
+  // remaining revenue - removed per business direction (2026-08-28): that
+  // gap is normal mid-build (materials get ordered ahead of the progress
+  // claim that pays for them), not a real problem, so it was pure noise.
+  // The aggregate "Cash to complete active jobs" dashboard figure still
+  // shows the underlying number without alert-spamming every job that has
+  // one.
   for (const row of significantJobRows) {
-    const cashRequired = liveCashRequiredToFinish(row);
-    if (cashRequired > 0) {
-      alerts.push({
-        id: `live-alert-job-cash-${row.job.id}`,
-        severity: "critical",
-        title: `${row.job.jobNumber} requires additional cash to finish`,
-        description: `${row.job.client} (${row.job.jobNumber}) requires approximately $${Math.round(cashRequired).toLocaleString()} of additional cash to complete.`,
-        jobId: row.job.id,
-        href: `/jobs/${row.job.id}`,
-      });
-    }
-
     const costing = jobCosting(row.job);
     if (costing.belowTarget) {
       alerts.push({
