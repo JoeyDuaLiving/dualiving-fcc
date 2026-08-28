@@ -1,10 +1,11 @@
 import "server-only";
-import { and, desc, eq, inArray } from "drizzle-orm";
+import { and, desc, eq, inArray, ne } from "drizzle-orm";
 import { db } from "@/db/client";
 import { bills, invoices, jobInvoicePayments, jobs, purchaseOrders, syncRuns } from "@/db/schema";
 import type { BuildxactJob, BuildxactJobInvoice, BuildxactPurchaseOrder } from "@/integrations/buildxact/types";
 import type { XeroInvoice } from "@/integrations/xero/types";
 import type { ManualStageRow } from "@/lib/manual-stages-source";
+import { STOCK_JOB_NUMBER } from "@/lib/stock-source";
 import type { Job, JobStatus } from "@/types";
 
 // ---------------------------------------------------------------------------
@@ -78,8 +79,14 @@ export async function loadLiveJobsList(): Promise<LiveJobsListResult> {
   try {
     // Newest first by creation date, matching Buildxact's own job list order
     // - not updatedAt, which just reflects whichever jobs the last sync
-    // happened to touch and isn't a meaningful business order.
-    const rows = await db.select().from(jobs).where(eq(jobs.source, "buildxact")).orderBy(desc(jobs.startDate));
+    // happened to touch and isn't a meaningful business order. J1057
+    // (STOCK) is a bulk-purchasing placeholder, not a real job - see
+    // stock-source.ts, which has its own dedicated page.
+    const rows = await db
+      .select()
+      .from(jobs)
+      .where(and(eq(jobs.source, "buildxact"), ne(jobs.jobNumber, STOCK_JOB_NUMBER)))
+      .orderBy(desc(jobs.startDate));
     if (rows.length === 0) {
       return {
         jobs: [],
@@ -197,7 +204,7 @@ export function liveNextPayment(row: LiveJobCashPositionRow, manualStagesByJobId
 export async function loadLiveActiveJobsCashPositions(): Promise<LiveJobsCashPositionsResult> {
   try {
     const jobRows = await db.select().from(jobs).where(eq(jobs.source, "buildxact"));
-    const activeRows = jobRows.filter((r) => r.status !== "complete");
+    const activeRows = jobRows.filter((r) => r.status !== "complete" && r.jobNumber !== STOCK_JOB_NUMBER);
     if (activeRows.length === 0) {
       return { rows: [], source: jobRows.length === 0 ? "unavailable" : "live" };
     }
