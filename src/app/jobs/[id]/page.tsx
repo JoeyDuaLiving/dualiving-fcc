@@ -14,6 +14,7 @@ import {
 } from "@/lib/calculations";
 import { paymentSchedules, reconciliationFlags } from "@/lib/mock-data";
 import { loadLiveJobDetail, type LiveJobDetail } from "@/lib/jobs-source";
+import type { BuildxactPurchaseOrder } from "@/integrations/buildxact/types";
 import type { Job } from "@/types";
 
 export default async function JobDetailPage({ params }: { params: Promise<{ id: string }> }) {
@@ -328,6 +329,28 @@ function LiveJobDetailView({ detail }: { detail: LiveJobDetail }) {
   const costToDate = job.actualCost + cashPosition.committedCost;
   const profitToDatePercent = revisedRevenue > 0 ? ((revisedRevenue - costToDate) / revisedRevenue) * 100 : 0;
 
+  // Subcontractor labour, detected from PO descriptions ("Labour", "Wages",
+  // "Superannuation") - the same word-boundary tagging pattern as the STOCK
+  // detection elsewhere in this app. Deliberately not the full labour cost:
+  // this tenant's own crew wages aren't tracked per job in Buildxact (only
+  // 46 of 111 jobs have any per-job wage entry at all, and those are small
+  // relative to total payroll) - just what's visible via subcontractor POs.
+  // Per-PO contribution mirrors how committedAmountForPo/actualCost already
+  // treat a PO - the full amount once closed (Received/Completed, already
+  // reflected in actualCost), only the not-yet-invoiced remainder while
+  // open (reflected in committedCost) - so labour + materials/other always
+  // adds back up to costToDate exactly.
+  const LABOUR_TAG_RE = /\b(labou?r|wages?|superannuation)\b/i;
+  function poCostToDateContribution(po: BuildxactPurchaseOrder): number {
+    if (po.orderStatus === "Cancelled") return 0;
+    if (po.orderStatus === "Received" || po.orderStatus === "Completed") return po.orderTotalIncTax;
+    return Math.max(0, po.orderTotalIncTax - po.invoiceTotalIncTax);
+  }
+  const isLabourPO = (po: BuildxactPurchaseOrder) => LABOUR_TAG_RE.test(po.description ?? "");
+  const labourCostToDate = purchaseOrders.filter(isLabourPO).reduce((s, po) => s + poCostToDateContribution(po), 0);
+  const materialsAndOtherCostToDate = Math.max(0, costToDate - labourCostToDate);
+  const labourPercent = costToDate > 0 ? (labourCostToDate / costToDate) * 100 : 0;
+
   return (
     <div>
       <Link href="/jobs" className="inline-flex items-center gap-1.5 text-xs text-slate-400 hover:text-slate-200 mb-4">
@@ -411,7 +434,14 @@ function LiveJobDetailView({ detail }: { detail: LiveJobDetail }) {
               {purchaseOrders.map((po) => (
                 <tr key={po.purchaseOrderId}>
                   <td className="py-2 text-slate-300">#{po.orderNumber}</td>
-                  <td className="py-2 text-slate-400">{po.description}</td>
+                  <td className="py-2 text-slate-400">
+                    {po.description}
+                    {isLabourPO(po) && (
+                      <span className="ml-2">
+                        <StatusPill tone="warn">Labour</StatusPill>
+                      </span>
+                    )}
+                  </td>
                   <td className="py-2 text-right tabular-nums text-slate-300">{formatAUD(po.orderTotalIncTax)}</td>
                   <td className="py-2 text-right">
                     <StatusPill tone={po.isCompleted ? "good" : "neutral"}>{po.orderStatus}</StatusPill>
@@ -457,6 +487,39 @@ function LiveJobDetailView({ detail }: { detail: LiveJobDetail }) {
           </table>
         </Card>
       </div>
+
+      <Card title="Cost breakdown" className="mb-6">
+        <div className="space-y-3">
+          <div>
+            <div className="flex justify-between text-xs mb-1">
+              <span className="text-slate-400">Subcontractor labour</span>
+              <span className="text-slate-300 tabular-nums">
+                {formatAUD(labourCostToDate)} ({labourPercent.toFixed(0)}%)
+              </span>
+            </div>
+            <div className="h-1.5 rounded-full bg-slate-800 overflow-hidden">
+              <div className="h-full bg-amber-400 rounded-full" style={{ width: `${labourPercent}%` }} />
+            </div>
+          </div>
+          <div>
+            <div className="flex justify-between text-xs mb-1">
+              <span className="text-slate-400">Materials &amp; other</span>
+              <span className="text-slate-300 tabular-nums">
+                {formatAUD(materialsAndOtherCostToDate)} ({(100 - labourPercent).toFixed(0)}%)
+              </span>
+            </div>
+            <div className="h-1.5 rounded-full bg-slate-800 overflow-hidden">
+              <div className="h-full bg-brand-500 rounded-full" style={{ width: `${100 - labourPercent}%` }} />
+            </div>
+          </div>
+        </div>
+        <p className="text-xs text-slate-500 mt-4">
+          Subcontractor labour only, detected from purchase order descriptions (&ldquo;Labour&rdquo;, &ldquo;Wages&rdquo;,
+          &ldquo;Superannuation&rdquo;) - this doesn&rsquo;t include your own crew&rsquo;s wages, which aren&rsquo;t
+          tracked per job in Buildxact. Tagged orders are marked &ldquo;Labour&rdquo; in the Purchase orders table
+          above.
+        </p>
+      </Card>
 
       <div className="grid lg:grid-cols-2 gap-6">
         <Card title="Invoices" action={<span className="text-xs text-slate-500">{invoices.length}</span>}>
