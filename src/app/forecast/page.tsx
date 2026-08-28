@@ -2,6 +2,7 @@ import { PageHeader } from "@/components/shared/PageHeader";
 import { StatusPill } from "@/components/shared/Badges";
 import { ForecastClient } from "@/components/forecast/ForecastClient";
 import { ManualStagesManager, type ManualStageDTO } from "@/components/forecast/ManualStagesManager";
+import { ManualStagesSummary } from "@/components/forecast/ManualStagesSummary";
 import { QuotedJobsManager } from "@/components/forecast/QuotedJobsManager";
 import { activeJobs, buildForecastItems, currentCashBalance, jobCosting } from "@/lib/calculations";
 import { settings } from "@/lib/mock-data";
@@ -53,9 +54,10 @@ export default async function ForecastPage() {
           {live.error} Showing Phase 1 mock data in the meantime.
         </div>
       )}
+      <ForecastClient items={items} buffer={settings.minimumCashBuffer} openingBalance={openingBalance} jobOptions={jobOptions} />
+      {isLive && <ManualStagesSummary jobOptions={manualStageJobOptions} stagesByJobId={manualStagesByJobId} />}
       {isLive && <ManualStagesManager jobOptions={manualStageJobOptions} stagesByJobId={manualStagesByJobId} />}
       {isLive && <QuotedJobsManager quotedJobs={live.data!.quotedJobs} />}
-      <ForecastClient items={items} buffer={settings.minimumCashBuffer} openingBalance={openingBalance} jobOptions={jobOptions} />
     </div>
   );
 }

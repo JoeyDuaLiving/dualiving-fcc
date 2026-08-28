@@ -41,7 +41,16 @@ export default async function StockPage() {
 
           <Card
             title="Drawn down onto jobs"
-            action={<span className="text-xs text-slate-500">Purchase orders elsewhere tagged &ldquo;STOCK&rdquo;</span>}
+            action={
+              <div className="flex items-center gap-3">
+                <span className="text-xs text-slate-500">Purchase orders elsewhere tagged &ldquo;STOCK&rdquo;</span>
+                {stock.drawdowns.length > 0 && (
+                  <a href="/api/stock/export" className="text-xs text-brand-400 hover:text-brand-300 font-medium">
+                    Export CSV
+                  </a>
+                )}
+              </div>
+            }
             className="mb-6"
           >
             {stock.drawdowns.length === 0 ? (

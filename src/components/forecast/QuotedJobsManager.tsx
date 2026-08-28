@@ -23,6 +23,19 @@ export interface QuotedJobDTO {
   stages: QuotedJobStageDTO[];
 }
 
+interface JobEditState {
+  reference: string;
+  client: string;
+  estimatedContractValue: string;
+  expectedStartDate: string;
+}
+
+interface StageEditState {
+  label: string;
+  percentOfContract: string;
+  expectedDate: string;
+}
+
 export function QuotedJobsManager({ quotedJobs }: { quotedJobs: QuotedJobDTO[] }) {
   const router = useRouter();
   const [reference, setReference] = useState("");
@@ -31,6 +44,12 @@ export function QuotedJobsManager({ quotedJobs }: { quotedJobs: QuotedJobDTO[] }
   const [startDate, setStartDate] = useState("");
   const [submitting, setSubmitting] = useState(false);
   const [error, setError] = useState<string | null>(null);
+
+  const [editingJobId, setEditingJobId] = useState<string | null>(null);
+  const [jobEdit, setJobEdit] = useState<JobEditState | null>(null);
+  const [editingStageId, setEditingStageId] = useState<string | null>(null);
+  const [stageEdit, setStageEdit] = useState<StageEditState | null>(null);
+  const [savingEdit, setSavingEdit] = useState(false);
 
   async function addQuotedJob() {
     if (!reference || !client || !value || !startDate) {
@@ -71,6 +90,82 @@ export function QuotedJobsManager({ quotedJobs }: { quotedJobs: QuotedJobDTO[] }
     router.refresh();
   }
 
+  function startEditJob(q: QuotedJobDTO) {
+    setEditingJobId(q.id);
+    setJobEdit({
+      reference: q.reference,
+      client: q.client,
+      estimatedContractValue: String(q.estimatedContractValue),
+      expectedStartDate: q.expectedStartDate,
+    });
+  }
+
+  function cancelEditJob() {
+    setEditingJobId(null);
+    setJobEdit(null);
+  }
+
+  async function saveEditJob(id: string) {
+    if (!jobEdit) return;
+    setSavingEdit(true);
+    setError(null);
+    try {
+      const res = await fetch(`/api/quoted-jobs/${id}`, {
+        method: "PATCH",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({
+          reference: jobEdit.reference,
+          client: jobEdit.client,
+          estimatedContractValue: Number(jobEdit.estimatedContractValue),
+          expectedStartDate: jobEdit.expectedStartDate,
+        }),
+      });
+      if (!res.ok) throw new Error("Failed to save changes");
+      setEditingJobId(null);
+      setJobEdit(null);
+      router.refresh();
+    } catch (err) {
+      setError(err instanceof Error ? err.message : "Failed to save changes");
+    } finally {
+      setSavingEdit(false);
+    }
+  }
+
+  function startEditStage(stage: QuotedJobStageDTO) {
+    setEditingStageId(stage.id);
+    setStageEdit({ label: stage.label, percentOfContract: String(stage.percentOfContract), expectedDate: stage.expectedDate });
+  }
+
+  function cancelEditStage() {
+    setEditingStageId(null);
+    setStageEdit(null);
+  }
+
+  async function saveEditStage(id: string) {
+    if (!stageEdit) return;
+    setSavingEdit(true);
+    setError(null);
+    try {
+      const res = await fetch(`/api/quoted-job-stages/${id}`, {
+        method: "PATCH",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({
+          label: stageEdit.label,
+          percentOfContract: Number(stageEdit.percentOfContract),
+          expectedDate: stageEdit.expectedDate,
+        }),
+      });
+      if (!res.ok) throw new Error("Failed to save changes");
+      setEditingStageId(null);
+      setStageEdit(null);
+      router.refresh();
+    } catch (err) {
+      setError(err instanceof Error ? err.message : "Failed to save changes");
+    } finally {
+      setSavingEdit(false);
+    }
+  }
+
   return (
     <Card title="Quoted jobs (not yet in Buildxact)" className="mb-6">
       <p className="text-sm text-slate-400 mb-4">
@@ -92,15 +187,71 @@ export function QuotedJobsManager({ quotedJobs }: { quotedJobs: QuotedJobDTO[] }
         <div className="space-y-4 mb-5">
           {quotedJobs.map((q) => (
             <div key={q.id} className="rounded-lg border border-slate-800 p-3">
-              <div className="flex items-center justify-between mb-2">
-                <div>
-                  <span className="text-sm font-medium text-slate-200">{q.reference} - {q.client}</span>
-                  <span className="text-xs text-slate-500 ml-2">{formatAUD(q.estimatedContractValue)} estimated</span>
+              {editingJobId === q.id && jobEdit ? (
+                <div className="grid md:grid-cols-4 gap-2 items-end mb-2">
+                  <div>
+                    <label className="text-xs text-slate-400 block mb-1">Reference</label>
+                    <input
+                      value={jobEdit.reference}
+                      onChange={(e) => setJobEdit({ ...jobEdit, reference: e.target.value })}
+                      className="w-full bg-slate-800 border border-slate-700 rounded-md px-2 py-1 text-sm text-slate-200"
+                    />
+                  </div>
+                  <div>
+                    <label className="text-xs text-slate-400 block mb-1">Client</label>
+                    <input
+                      value={jobEdit.client}
+                      onChange={(e) => setJobEdit({ ...jobEdit, client: e.target.value })}
+                      className="w-full bg-slate-800 border border-slate-700 rounded-md px-2 py-1 text-sm text-slate-200"
+                    />
+                  </div>
+                  <div>
+                    <label className="text-xs text-slate-400 block mb-1">Estimated value ($)</label>
+                    <input
+                      type="number"
+                      value={jobEdit.estimatedContractValue}
+                      onChange={(e) => setJobEdit({ ...jobEdit, estimatedContractValue: e.target.value })}
+                      className="w-full bg-slate-800 border border-slate-700 rounded-md px-2 py-1 text-sm text-slate-200"
+                    />
+                  </div>
+                  <div>
+                    <label className="text-xs text-slate-400 block mb-1">Expected start date</label>
+                    <input
+                      type="date"
+                      value={jobEdit.expectedStartDate}
+                      onChange={(e) => setJobEdit({ ...jobEdit, expectedStartDate: e.target.value })}
+                      className="w-full bg-slate-800 border border-slate-700 rounded-md px-2 py-1 text-sm text-slate-200"
+                    />
+                  </div>
+                  <div className="md:col-span-4 flex gap-2">
+                    <button
+                      onClick={() => saveEditJob(q.id)}
+                      disabled={savingEdit}
+                      className="bg-brand-500 hover:bg-brand-400 disabled:opacity-50 text-white text-xs rounded-md px-3 py-1.5"
+                    >
+                      Save
+                    </button>
+                    <button onClick={cancelEditJob} className="text-xs text-slate-400 hover:text-slate-200 px-3 py-1.5">
+                      Cancel
+                    </button>
+                  </div>
                 </div>
-                <button onClick={() => removeQuotedJob(q.id)} className="text-xs text-red-400 hover:text-red-300">
-                  Delete quoted job
-                </button>
-              </div>
+              ) : (
+                <div className="flex items-center justify-between mb-2">
+                  <div>
+                    <span className="text-sm font-medium text-slate-200">{q.reference} - {q.client}</span>
+                    <span className="text-xs text-slate-500 ml-2">{formatAUD(q.estimatedContractValue)} estimated</span>
+                  </div>
+                  <div className="flex items-center gap-3">
+                    <button onClick={() => startEditJob(q)} className="text-xs text-brand-400 hover:text-brand-300">
+                      Edit
+                    </button>
+                    <button onClick={() => removeQuotedJob(q.id)} className="text-xs text-red-400 hover:text-red-300">
+                      Delete quoted job
+                    </button>
+                  </div>
+                </div>
+              )}
               <table className="w-full text-sm">
                 <thead>
                   <tr className="text-left text-xs text-slate-500 border-b border-slate-800">
@@ -112,21 +263,63 @@ export function QuotedJobsManager({ quotedJobs }: { quotedJobs: QuotedJobDTO[] }
                   </tr>
                 </thead>
                 <tbody className="divide-y divide-slate-800/60">
-                  {q.stages.map((stage) => (
-                    <tr key={stage.id}>
-                      <td className="py-1.5 text-slate-300">{stage.label}</td>
-                      <td className="py-1.5 text-right tabular-nums text-slate-400">{stage.percentOfContract}%</td>
-                      <td className="py-1.5 text-right tabular-nums text-slate-400">
-                        {formatAUD((stage.percentOfContract / 100) * q.estimatedContractValue)}
-                      </td>
-                      <td className="py-1.5 text-slate-500 whitespace-nowrap">{formatDateAU(stage.expectedDate)}</td>
-                      <td className="py-1.5 text-right">
-                        <button onClick={() => removeStage(stage.id)} className="text-xs text-red-400 hover:text-red-300">
-                          Remove
-                        </button>
-                      </td>
-                    </tr>
-                  ))}
+                  {q.stages.map((stage) =>
+                    editingStageId === stage.id && stageEdit ? (
+                      <tr key={stage.id}>
+                        <td className="py-1.5">
+                          <input
+                            value={stageEdit.label}
+                            onChange={(e) => setStageEdit({ ...stageEdit, label: e.target.value })}
+                            className="w-full bg-slate-800 border border-slate-700 rounded-md px-2 py-1 text-xs text-slate-200"
+                          />
+                        </td>
+                        <td className="py-1.5">
+                          <input
+                            type="number"
+                            value={stageEdit.percentOfContract}
+                            onChange={(e) => setStageEdit({ ...stageEdit, percentOfContract: e.target.value })}
+                            className="w-full bg-slate-800 border border-slate-700 rounded-md px-2 py-1 text-xs text-slate-200 text-right"
+                          />
+                        </td>
+                        <td className="py-1.5 text-right tabular-nums text-slate-500">
+                          {formatAUD((Number(stageEdit.percentOfContract || 0) / 100) * q.estimatedContractValue)}
+                        </td>
+                        <td className="py-1.5">
+                          <input
+                            type="date"
+                            value={stageEdit.expectedDate}
+                            onChange={(e) => setStageEdit({ ...stageEdit, expectedDate: e.target.value })}
+                            className="w-full bg-slate-800 border border-slate-700 rounded-md px-2 py-1 text-xs text-slate-200"
+                          />
+                        </td>
+                        <td className="py-1.5 text-right whitespace-nowrap">
+                          <button onClick={() => saveEditStage(stage.id)} disabled={savingEdit} className="text-xs text-brand-400 hover:text-brand-300 mr-2">
+                            Save
+                          </button>
+                          <button onClick={cancelEditStage} className="text-xs text-slate-400 hover:text-slate-200">
+                            Cancel
+                          </button>
+                        </td>
+                      </tr>
+                    ) : (
+                      <tr key={stage.id}>
+                        <td className="py-1.5 text-slate-300">{stage.label}</td>
+                        <td className="py-1.5 text-right tabular-nums text-slate-400">{stage.percentOfContract}%</td>
+                        <td className="py-1.5 text-right tabular-nums text-slate-400">
+                          {formatAUD((stage.percentOfContract / 100) * q.estimatedContractValue)}
+                        </td>
+                        <td className="py-1.5 text-slate-500 whitespace-nowrap">{formatDateAU(stage.expectedDate)}</td>
+                        <td className="py-1.5 text-right whitespace-nowrap">
+                          <button onClick={() => startEditStage(stage)} className="text-xs text-brand-400 hover:text-brand-300 mr-3">
+                            Edit
+                          </button>
+                          <button onClick={() => removeStage(stage.id)} className="text-xs text-red-400 hover:text-red-300">
+                            Remove
+                          </button>
+                        </td>
+                      </tr>
+                    )
+                  )}
                 </tbody>
               </table>
             </div>
