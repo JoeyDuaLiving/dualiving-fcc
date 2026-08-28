@@ -29,7 +29,13 @@ export function formatAUDSigned(amount: number): string {
   return amount < 0 ? `-${formatted}` : `+${formatted}`;
 }
 
-export function formatDateAU(iso: string): string {
+export function formatDateAU(iso: string | null | undefined): string {
+  // Some Buildxact records (e.g. the STOCK placeholder job's invoice rows)
+  // return a null due date despite the raw type declaring it as always a
+  // string - real data disagreeing with the documented shape, same caveat
+  // as elsewhere in the Buildxact integration. Every call site in this app
+  // wants "-" for a missing date, not a crash.
+  if (!iso) return "—";
   return new Intl.DateTimeFormat("en-AU", {
     day: "2-digit",
     month: "short",

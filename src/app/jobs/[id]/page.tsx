@@ -315,9 +315,18 @@ function MockJobDetail({ job }: { job: Job }) {
 }
 
 function LiveJobDetailView({ detail }: { detail: LiveJobDetail }) {
-  const { job, cashPosition, purchaseOrders, invoices, xeroBills, xeroInvoices } = detail;
+  const { job, cashPosition, purchaseOrders, invoices, xeroBills, xeroInvoices, estimatedCost } = detail;
   const xeroBillsTotal = xeroBills.reduce((s, b) => s + b.amount, 0);
   const xeroInvoicesTotal = xeroInvoices.reduce((s, inv) => s + inv.amount, 0);
+
+  // To-date profit, not a forecast-to-completion margin - actualCost and
+  // committedCost don't overlap (committedAmountForPo excludes POs already
+  // reflected in actualCost), so this is a clean snapshot of cost incurred
+  // and committed so far against contract value, without needing the
+  // cost-to-complete figure Buildxact doesn't reliably expose.
+  const revisedRevenue = job.contractValue + job.approvedVariations;
+  const costToDate = job.actualCost + cashPosition.committedCost;
+  const profitToDatePercent = revisedRevenue > 0 ? ((revisedRevenue - costToDate) / revisedRevenue) * 100 : 0;
 
   return (
     <div>
@@ -345,14 +354,29 @@ function LiveJobDetailView({ detail }: { detail: LiveJobDetail }) {
       </div>
 
       <div className="mb-6 rounded-lg border border-slate-800 bg-slate-900/40 px-4 py-3 text-xs text-slate-400">
-        This job is loaded live from Buildxact (job, purchase order and invoice data). Forecast cost-to-complete,
-        margin and cash-required aren&rsquo;t shown - Buildxact doesn&rsquo;t expose a confirmed &ldquo;cost to
+        This job is loaded live from Buildxact (job, purchase order and invoice data). Forecast cost-to-complete
+        and cash-required aren&rsquo;t shown - Buildxact doesn&rsquo;t expose a confirmed &ldquo;cost to
         complete&rdquo; field yet, so those numbers would be guesses rather than real figures. They&rsquo;ll appear
         once that gap is closed (a confirmed field, or a manual override).
+        <br className="hidden sm:block" />
+        {revisedRevenue > 0 ? (
+          <>
+            Profit to date is{" "}
+            <span className={profitToDatePercent < 0 ? "text-red-400 font-medium" : "text-emerald-400 font-medium"}>
+              {profitToDatePercent.toFixed(1)}%
+            </span>{" "}
+            - contract value ({formatAUD(revisedRevenue)}) minus actual + committed cost so far (
+            {formatAUD(costToDate)}). This doesn&rsquo;t include future cost to complete, so it will move as the job
+            progresses.
+          </>
+        ) : (
+          <>Profit to date is N/A - this job has no contract value recorded.</>
+        )}
       </div>
 
-      <div className="grid grid-cols-2 md:grid-cols-3 lg:grid-cols-6 gap-3 mb-6">
+      <div className="grid grid-cols-2 md:grid-cols-4 lg:grid-cols-7 gap-3 mb-6">
         <StatCard label="Contract value" value={formatAUD(job.contractValue)} sub={`incl. ${formatAUD(job.approvedVariations)} variations`} />
+        <StatCard label="Estimated cost" value={estimatedCost !== null ? formatAUD(estimatedCost) : "—"} sub={estimatedCost !== null ? "Buildxact estimate" : "No estimate on this job"} />
         <StatCard label="Actual cost" value={formatAUD(job.actualCost)} />
         <StatCard label="Committed cost" value={formatAUD(cashPosition.committedCost)} sub={`${purchaseOrders.length} purchase orders`} />
         <StatCard label="Cash received" value={formatAUD(cashPosition.cashReceived)} sub={`of ${formatAUD(cashPosition.amountInvoicedToDate)} invoiced`} />
