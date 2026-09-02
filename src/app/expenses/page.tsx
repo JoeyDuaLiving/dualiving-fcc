@@ -70,7 +70,13 @@ export default async function ExpensesPage() {
   const revenueRequired = isLive ? liveRevenueRequiredToCoverOpex(liveOpex.expenses, marginPercent) : revenueRequiredToCoverOpex(marginPercent);
 
   const cashBalance = isLive && liveBank.source === "live" ? liveBank.totalBalance : currentCashBalance();
-  const runwayMonths = monthlyAverage > 0 ? cashBalance / monthlyAverage : Infinity;
+  // Cash runway needs the true monthly cash burn, not just P&L opex - loan
+  // repayments are real, unavoidable cash out that OPEX alone doesn't see
+  // (see RecurringLiabilitiesManager). "Monthly OPEX" itself stays a clean
+  // P&L figure; only this burn-rate figure blends the two.
+  const totalLiabilityMonthly = liabilitiesForDisplay.reduce((s, l) => s + l.monthlyEquivalent, 0);
+  const monthlyBurn = monthlyAverage + totalLiabilityMonthly;
+  const runwayMonths = monthlyBurn > 0 ? cashBalance / monthlyBurn : Infinity;
   const runway = isLive ? runwayMonths : simpleCashRunwayMonths();
 
   return (
@@ -95,7 +101,11 @@ export default async function ExpensesPage() {
         <StatCard label="Current month" value={formatAUD(currentMonth)} />
         <StatCard label="Monthly average" value={formatAUD(monthlyAverage)} />
         <StatCard label="Annualised OPEX" value={formatAUD(annualised, { compact: true })} />
-        <StatCard label="Cash runway" value={runway === Infinity ? "N/A" : `${runway.toFixed(1)} months`} sub={`${formatAUD(cashBalance, { compact: true })} cash / avg burn`} />
+        <StatCard
+          label="Cash runway"
+          value={runway === Infinity ? "N/A" : `${runway.toFixed(1)} months`}
+          sub={isLive ? `${formatAUD(cashBalance, { compact: true })} cash / avg burn incl. loans` : `${formatAUD(cashBalance, { compact: true })} cash / avg burn`}
+        />
       </div>
 
       <div className="grid md:grid-cols-3 gap-3 mb-6">
