@@ -125,6 +125,30 @@ export const manualPaymentStages = pgTable("manual_payment_stages", {
   updatedAt: timestamp("updated_at").notNull().defaultNow(),
 });
 
+// Recurring liability repayments (car loans, equipment finance, etc.) -
+// real, scheduled cash outflows that never appear in Xero's P&L since
+// they reduce a liability account, not an expense account (only an
+// interest component, if separately itemised, would ever hit an expense
+// account) - so the opex sync has no way to see them. Genuinely manual,
+// same reasoning as manualPaymentStages: entered directly since no synced
+// system has this data. startDate is an anchor (a real known repayment
+// date), not necessarily the loan's origination date - occurrences are
+// projected forward from it by `frequency`, not by a day-of-month, since
+// weekly/fortnightly debits don't land on a fixed day. endDate is
+// optional - once a loan is paid off, stop projecting new occurrences
+// without deleting the historical record.
+export const recurringLiabilities = pgTable("recurring_liabilities", {
+  id: id(),
+  description: text("description").notNull(), // e.g. "Ute loan"
+  amount: doublePrecision("amount").notNull(),
+  frequency: text("frequency").notNull(), // "weekly" | "fortnightly" | "monthly"
+  startDate: timestamp("start_date").notNull(),
+  endDate: timestamp("end_date"),
+  createdBy: text("created_by"),
+  createdAt: timestamp("created_at").notNull().defaultNow(),
+  updatedAt: timestamp("updated_at").notNull().defaultNow(),
+});
+
 // Quoted jobs - a deal close to starting that doesn't exist in Buildxact
 // yet ("Q1280" style reference, becomes "J1280" once BX creates the real
 // job). Genuinely separate from jobs/manualPaymentStages since there's no

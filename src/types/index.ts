@@ -217,6 +217,7 @@ export type ForecastCategory =
   | "operating_expense"
   | "job_cost"
   | "pipeline_deposit"
+  | "loan_repayment"
   | "other";
 
 export interface ForecastItem {

@@ -27,6 +27,10 @@ import {
   loadLiveBankSummary,
   loadLiveOperatingExpenses,
 } from "@/lib/xero-source";
+import { RecurringLiabilitiesManager } from "@/components/expenses/RecurringLiabilitiesManager";
+import { loadRecurringLiabilities, monthlyEquivalent, projectLiabilityOccurrences } from "@/lib/recurring-liabilities-source";
+import { addDays } from "@/lib/format";
+import { TODAY } from "@/lib/mock-data";
 
 export const dynamic = "force-dynamic";
 
@@ -38,8 +42,15 @@ const CATEGORY_LABEL: Record<string, string> = {
 };
 
 export default async function ExpensesPage() {
-  const [liveOpex, liveBank] = await Promise.all([loadLiveOperatingExpenses(), loadLiveBankSummary()]);
+  const [liveOpex, liveBank, liveLiabilities] = await Promise.all([loadLiveOperatingExpenses(), loadLiveBankSummary(), loadRecurringLiabilities()]);
   const isLive = liveOpex.source === "live";
+
+  const liabilityRangeEnd = addDays(TODAY, 365);
+  const liabilitiesForDisplay = liveLiabilities.liabilities.map((l) => ({
+    ...l,
+    nextOccurrence: projectLiabilityOccurrences(l, TODAY, liabilityRangeEnd)[0]?.date ?? null,
+    monthlyEquivalent: monthlyEquivalent(l),
+  }));
 
   // A category with nothing recorded in the current period, previous period
   // or YTD isn't useful in this table - just noise.
@@ -119,7 +130,7 @@ export default async function ExpensesPage() {
         </p>
       )}
 
-      <Card title="By category">
+      <Card title="By category" className="mb-6">
         <div className="overflow-x-auto">
           <table className="w-full text-sm">
             <thead>
@@ -149,6 +160,8 @@ export default async function ExpensesPage() {
           </table>
         </div>
       </Card>
+
+      <RecurringLiabilitiesManager liabilities={liabilitiesForDisplay} />
     </div>
   );
 }

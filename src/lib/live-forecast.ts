@@ -15,6 +15,7 @@ import {
 } from "./xero-source";
 import { liveExpectedDeposit, loadLiveOpenOpportunities, type LiveOpportunity } from "./ghl-source";
 import { loadManualStages, type ManualStageRow } from "./manual-stages-source";
+import { loadRecurringLiabilities, projectLiabilityOccurrences, type RecurringLiabilityDTO } from "./recurring-liabilities-source";
 import { loadQuotedJobs, type QuotedJobDTO } from "./quoted-jobs-source";
 import { loadReconciliation, type JobReconciliationRow } from "./reconciliation-source";
 
@@ -46,6 +47,7 @@ export interface LiveForecastData {
   operatingExpenses: LiveOperatingExpense[];
   manualStagesByJobId: Map<string, ManualStageRow[]>;
   quotedJobs: QuotedJobDTO[];
+  recurringLiabilities: RecurringLiabilityDTO[];
   currentCashBalance: number;
 }
 
@@ -61,16 +63,18 @@ export interface LoadLiveForecastResult {
  * since that only removes the recurring-opex forecast items, not the whole
  * picture. */
 export async function loadLiveForecastData(): Promise<LoadLiveForecastResult> {
-  const [jobsResult, receivablesResult, payablesResult, bankResult, opexResult, oppsResult, manualStagesResult, quotedJobsResult] = await Promise.all([
-    loadLiveActiveJobsCashPositions(),
-    loadLiveReceivables(),
-    loadLivePayables(),
-    loadLiveBankSummary(),
-    loadLiveOperatingExpenses(),
-    loadLiveOpenOpportunities(),
-    loadManualStages(),
-    loadQuotedJobs(),
-  ]);
+  const [jobsResult, receivablesResult, payablesResult, bankResult, opexResult, oppsResult, manualStagesResult, quotedJobsResult, recurringLiabilitiesResult] =
+    await Promise.all([
+      loadLiveActiveJobsCashPositions(),
+      loadLiveReceivables(),
+      loadLivePayables(),
+      loadLiveBankSummary(),
+      loadLiveOperatingExpenses(),
+      loadLiveOpenOpportunities(),
+      loadManualStages(),
+      loadQuotedJobs(),
+      loadRecurringLiabilities(),
+    ]);
 
   if (jobsResult.source !== "live" || receivablesResult.source !== "live" || payablesResult.source !== "live" || bankResult.source !== "live") {
     const firstError = [jobsResult, receivablesResult, payablesResult, bankResult].find((r) => r.error)?.error;
@@ -86,6 +90,7 @@ export async function loadLiveForecastData(): Promise<LoadLiveForecastResult> {
       operatingExpenses: opexResult.source === "live" ? opexResult.expenses : [],
       manualStagesByJobId: manualStagesResult.source === "live" ? manualStagesResult.stagesByJobId : new Map(),
       quotedJobs: quotedJobsResult.source === "live" ? quotedJobsResult.quotedJobs : [],
+      recurringLiabilities: recurringLiabilitiesResult.source === "live" ? recurringLiabilitiesResult.liabilities : [],
       currentCashBalance: bankResult.totalBalance,
     },
     source: "live",
@@ -334,6 +339,30 @@ export function buildLiveForecastItems(data: LiveForecastData): ForecastItem[] {
         confidence: "forecast",
         status: "Projected recurring operating expense",
         description: `Projected ${category} (based on most recent transaction)`,
+      });
+    }
+  }
+
+  // Forecast outflows: recurring liability repayments (car loans, equipment
+  // finance) - real scheduled cash out that never shows up in Xero's P&L
+  // (see recurring-liabilities-source.ts), so it has to be projected here
+  // from the manually entered schedule rather than from any synced data.
+  // Same 90-day projection window as the rest of this forecast.
+  const liabilityRangeEnd = addDays(TODAY, 90);
+  for (const liability of data.recurringLiabilities) {
+    for (const occurrence of projectLiabilityOccurrences(liability, TODAY, liabilityRangeEnd)) {
+      items.push({
+        id: `live-fc-liability-${liability.id}-${occurrence.date}`,
+        source: "manual",
+        sourceId: liability.id,
+        date: clampToday(occurrence.date),
+        amount: occurrence.amount,
+        direction: "outflow",
+        category: "loan_repayment",
+        party: occurrence.description,
+        confidence: "forecast",
+        status: "Recurring liability repayment - not in Xero P&L",
+        description: `${occurrence.description} repayment`,
       });
     }
   }
