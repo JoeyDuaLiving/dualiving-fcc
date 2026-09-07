@@ -1,5 +1,5 @@
 import "server-only";
-import { and, eq, isNull, sql } from "drizzle-orm";
+import { and, eq, gt, isNull, notInArray, sql } from "drizzle-orm";
 import { db } from "@/db/client";
 import { bankAccounts, bills, customers, invoices, jobs, operatingExpenses, suppliers, syncErrors, syncRuns } from "@/db/schema";
 import {
@@ -146,9 +146,9 @@ export async function syncXero(): Promise<XeroSyncResult> {
     // --- AP bills (outstanding only - see accounting.ts scope note) -------
     try {
       const apBills = await getOutstandingBills();
-      const { imported, updated } = await upsertBills(apBills, supplierIdBySourceId, jobIdByNumber);
+      const { imported, updated, reconciled } = await upsertBills(apBills, supplierIdBySourceId, jobIdByNumber);
       recordsImported += imported;
-      recordsUpdated += updated;
+      recordsUpdated += updated + reconciled;
     } catch (err) {
       await logError(undefined, `Bills: ${err instanceof Error ? err.message : String(err)}`);
     }
@@ -357,7 +357,27 @@ async function upsertBills(apBills: XeroInvoice[], supplierIdBySourceId: Map<str
     }
   }
 
-  return { imported, updated };
+  // Reconcile bills that dropped off Xero's outstanding-bills feed.
+  // getOutstandingBills() filters Status!="PAID" server-side, so once a
+  // bill is paid it simply stops being returned here - forever. Without
+  // this step, our copy stays frozen at its last-known unpaid amount
+  // permanently (confirmed live 2026-09-07: 79 such "ghost" bills had
+  // accumulated, worth ~$66k of AP that had actually already been paid
+  // off in Xero). Anything still marked outstanding in our database that
+  // Xero didn't just return in this fetch has been resolved since it was
+  // last seen.
+  let reconciled = 0;
+  if (apBills.length > 0) {
+    const currentSourceIds = apBills.map((b) => b.InvoiceID);
+    const result = await db
+      .update(bills)
+      .set({ amountOutstanding: 0, status: "PAID", updatedAt: new Date() })
+      .where(and(eq(bills.source, "xero"), gt(bills.amountOutstanding, 0), notInArray(bills.sourceId, currentSourceIds)))
+      .returning({ id: bills.id });
+    reconciled = result.length;
+  }
+
+  return { imported, updated, reconciled };
 }
 
 async function relinkOrphanedJobRecords(jobIdByNumber: Map<string, string>): Promise<number> {

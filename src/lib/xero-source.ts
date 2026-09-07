@@ -176,9 +176,24 @@ function isStatementReconciledBill(raw: unknown): boolean {
   return !!description && STATEMENT_RECONCILED_RE.test(description.trim());
 }
 
+// Two more confirmed duplicates found alongside the statement bills above,
+// same 2026-09-07 investigation, that don't share a common text pattern
+// worth generalising into a regex:
+//  - Big River Group's "RB21661811020" ($7,211.57, described only as
+//    "Jones, Perry, Richardson, Morrison") is the same rollup pattern as
+//    the statement bills, just described by job names instead - its
+//    amount exactly equals the sum of Big River Group's other 8 itemised
+//    bills, to the cent.
+//  - LevelMaster's "S-29080" ($720.40) is a literal duplicate of
+//    "I-71736" - same date, same amount, same custom stringer item,
+//    entered twice under two different invoice numbers.
+const EXCLUDED_DUPLICATE_BILL_NUMBERS = new Set(["RB21661811020", "S-29080"]);
+
 export async function loadLivePayables(): Promise<LivePayablesResult> {
   try {
-    const rows = (await db.select().from(billsTable).where(gt(billsTable.amountOutstanding, 0))).filter((r) => !isStatementReconciledBill(r.raw));
+    const rows = (await db.select().from(billsTable).where(gt(billsTable.amountOutstanding, 0))).filter(
+      (r) => !isStatementReconciledBill(r.raw) && !EXCLUDED_DUPLICATE_BILL_NUMBERS.has(r.billNumber)
+    );
     if (rows.length === 0) {
       const [any] = await db.select({ id: billsTable.id }).from(billsTable).where(eq(billsTable.source, "xero")).limit(1);
       if (!any) return { bills: [], source: "unavailable", error: "No Xero bills synced yet." };
