@@ -159,9 +159,26 @@ export interface LivePayablesResult {
   error?: string;
 }
 
+// Confirmed with the business 2026-09-07: bills whose only line item reads
+// "Statement - Reconciled" are bookkeeper/Dext reconciliation artifacts
+// (a monthly statement rolled up into one line, zero GST, bill date ==
+// due date), not genuine additional debt - the underlying purchases are
+// already captured as normal itemised bills from the same supplier.
+// Confirmed on 4 real examples (Bunnings $15,562.48, Buildcert $8,877.15,
+// Stratco $7,892.48, KJ Bolt $830.01) totalling $33,162.12 that would
+// otherwise double-count real spend. Not identified by the "RB" invoice
+// number prefix - that prefix also appears on genuine itemised bills - so
+// this matches on the line item description specifically.
+const STATEMENT_RECONCILED_RE = /^statement\s*-\s*reconciled$/i;
+
+function isStatementReconciledBill(raw: unknown): boolean {
+  const description = (raw as XeroInvoice | null)?.LineItems?.[0]?.Description;
+  return !!description && STATEMENT_RECONCILED_RE.test(description.trim());
+}
+
 export async function loadLivePayables(): Promise<LivePayablesResult> {
   try {
-    const rows = await db.select().from(billsTable).where(gt(billsTable.amountOutstanding, 0));
+    const rows = (await db.select().from(billsTable).where(gt(billsTable.amountOutstanding, 0))).filter((r) => !isStatementReconciledBill(r.raw));
     if (rows.length === 0) {
       const [any] = await db.select({ id: billsTable.id }).from(billsTable).where(eq(billsTable.source, "xero")).limit(1);
       if (!any) return { bills: [], source: "unavailable", error: "No Xero bills synced yet." };
