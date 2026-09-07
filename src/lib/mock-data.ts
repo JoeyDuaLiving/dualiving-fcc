@@ -14,7 +14,13 @@ import type {
 } from "@/types";
 import { addDays } from "./format";
 
-export const TODAY = "2026-08-27";
+// Was hardcoded to a fixed date ("2026-08-27") from early Phase 1
+// development and never wired to the real clock - every date-relative
+// calculation across the app (overdue bills, "current month", cash
+// runway, forecast day-0, the Payables weekly buckets) was silently
+// running against that frozen date, drifting further stale every day
+// this app has been live. Now tracks the real date.
+export const TODAY = new Date().toISOString().slice(0, 10);
 
 // Small deterministic PRNG so mock data is stable across reloads/builds
 // without hand-entering every random-looking value.
