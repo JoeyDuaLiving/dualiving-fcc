@@ -1,7 +1,7 @@
 @import "tailwindcss";
 
 :root {
-  --background: #020617;
+  --background: #0f172a;
   --foreground: #f1f5f9;
 }
 
@@ -15,6 +15,19 @@
   --color-brand-300: #a0aaa0;
   --color-brand-400: #808d81;
   --color-brand-500: #607161;
+
+  /* Lightened dark palette (2026-09-08): every slate background, border
+     and divide utility used across the app cascades one step lighter
+     (each shade now equals Tailwind's default value for the step below
+     it: 950 to 900, 900 to 800, 800 to 700, 700 to 600, 600 to 500),
+     softening the near-black look without a full light-theme rewrite.
+     Text shades (100-500) are deliberately left at their default values,
+     since shifting them too would shrink text/background contrast. */
+  --color-slate-950: #0f172a;
+  --color-slate-900: #1e293b;
+  --color-slate-800: #334155;
+  --color-slate-700: #475569;
+  --color-slate-600: #64748b;
 }
 
 body {
