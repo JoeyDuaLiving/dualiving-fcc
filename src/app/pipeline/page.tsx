@@ -13,6 +13,7 @@ import {
 } from "@/lib/calculations";
 import { opportunities, settings } from "@/lib/mock-data";
 import {
+  BA_CONSTRUCTION_PIPELINE_ID,
   liveExpectedDeposit,
   liveTotalPipelineValue,
   liveWeightedExpectedDeposit,
@@ -80,28 +81,81 @@ export default async function PipelinePage() {
     const opportunitiesByPipelineId: Record<string, LiveOpportunity[]> = {};
     for (const p of pipelines) opportunitiesByPipelineId[p.id] = open.filter((o) => o.pipelineId === p.id);
 
+    // BA/Construction deals are effectively already committed jobs - this
+    // pipeline is only used to forecast when they'll commence, not as
+    // genuinely uncertain pipeline value, so it's excluded from the
+    // top-level totals below (still shown as its own board/timeline further
+    // down the page).
+    const pipelineOnly = open.filter((o) => o.pipelineId !== BA_CONSTRUCTION_PIPELINE_ID);
+    const baConstruction = open.filter((o) => o.pipelineId === BA_CONSTRUCTION_PIPELINE_ID);
+    const baByMonth = new Map<string, { count: number; value: number }>();
+    let baUndated = { count: 0, value: 0 };
+    for (const o of baConstruction) {
+      if (!o.expectedCloseDate) {
+        baUndated = { count: baUndated.count + 1, value: baUndated.value + o.value };
+        continue;
+      }
+      const key = o.expectedCloseDate.slice(0, 7);
+      const entry = baByMonth.get(key) ?? { count: 0, value: 0 };
+      entry.count++;
+      entry.value += o.value;
+      baByMonth.set(key, entry);
+    }
+    const baMonthLabel = new Intl.DateTimeFormat("en-AU", { month: "short", year: "numeric", timeZone: "UTC" });
+
     return (
       <div>
         <PageHeader
           title="Sales Pipeline"
-          description="Live from GoHighLevel - open opportunities in the Council Workflow, Non-Council Workflow and BA/Construction pipelines. This is potential future revenue, never counted as committed cash until a contract converts to a Buildxact job."
+          description="Live from GoHighLevel - open opportunities in the Council Workflow and Non-Council Workflow pipelines. This is potential future revenue, never counted as committed cash until a contract converts to a Buildxact job."
           action={<StatusPill tone="good">Live</StatusPill>}
         />
 
         <div className="grid grid-cols-2 md:grid-cols-4 gap-3 mb-6">
-          <StatCard label="Total pipeline" value={formatAUD(liveTotalPipelineValue(open))} sub={`${open.length} open opportunities`} />
-          <StatCard label="Weighted pipeline" value={formatAUD(liveWeightedPipelineValue(open))} sub="Value x probability" />
+          <StatCard label="Total pipeline" value={formatAUD(liveTotalPipelineValue(pipelineOnly))} sub={`${pipelineOnly.length} open opportunities`} />
+          <StatCard label="Weighted pipeline" value={formatAUD(liveWeightedPipelineValue(pipelineOnly))} sub="Value x probability" />
           <StatCard
             label="Expected deposits"
-            value={formatAUD(open.reduce((s, o) => s + liveExpectedDeposit(o, depositPercent), 0))}
+            value={formatAUD(pipelineOnly.reduce((s, o) => s + liveExpectedDeposit(o, depositPercent), 0))}
             sub={`If all convert (at ${depositPercent}% deposit assumption)`}
           />
           <StatCard
             label="Weighted expected deposits"
-            value={formatAUD(open.reduce((s, o) => s + liveWeightedExpectedDeposit(o, depositPercent), 0))}
+            value={formatAUD(pipelineOnly.reduce((s, o) => s + liveWeightedExpectedDeposit(o, depositPercent), 0))}
             sub="Probability-weighted"
           />
         </div>
+
+        {baConstruction.length > 0 && (
+          <Card
+            title="BA/Construction - forecast by expected close"
+            action={<span className="text-xs text-slate-500">{baConstruction.length} deals &middot; {formatAUD(liveTotalPipelineValue(baConstruction), { compact: true })}</span>}
+            className="mb-6"
+          >
+            <p className="text-xs text-slate-500 mb-3">
+              These are already effectively committed jobs, not uncertain pipeline - excluded from the totals above.
+              Shown here by expected close date to forecast when each will actually commence.
+            </p>
+            <div className="overflow-x-auto">
+              <div className="flex gap-4 min-w-max">
+                {[...baByMonth.entries()].map(([month, m]) => (
+                  <div key={month} className="min-w-[140px]">
+                    <div className="text-xs text-slate-400">{baMonthLabel.format(new Date(`${month}-01T00:00:00Z`))}</div>
+                    <div className="text-lg font-semibold text-white tabular-nums mt-1">{formatAUD(m.value, { compact: true })}</div>
+                    <div className="text-[11px] text-slate-500">{m.count} deal{m.count === 1 ? "" : "s"}</div>
+                  </div>
+                ))}
+                {baUndated.count > 0 && (
+                  <div className="min-w-[140px]">
+                    <div className="text-xs text-slate-400">No close date</div>
+                    <div className="text-lg font-semibold text-white tabular-nums mt-1">{formatAUD(baUndated.value, { compact: true })}</div>
+                    <div className="text-[11px] text-slate-500">{baUndated.count} deal{baUndated.count === 1 ? "" : "s"}</div>
+                  </div>
+                )}
+              </div>
+            </div>
+          </Card>
+        )}
 
         {pipelines.length > 0 ? (
           <PipelineKanbanBoard pipelines={pipelines} opportunitiesByPipelineId={opportunitiesByPipelineId} />

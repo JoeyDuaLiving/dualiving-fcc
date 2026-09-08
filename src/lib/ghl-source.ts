@@ -23,10 +23,18 @@ import { jobs, pipelineOpportunities } from "@/db/schema";
 // displays.
 // ---------------------------------------------------------------------------
 
+// BA/Construction is tracked separately from the other two - per business
+// direction (2026-09-07), these deals are effectively already committed
+// jobs, used here only to forecast *when* they'll actually commence, not
+// as genuinely uncertain pipeline value. It's excluded from the top-level
+// pipeline totals (Total/Weighted pipeline etc.) for that reason, even
+// though it's still shown as its own board/timeline on the page.
+export const BA_CONSTRUCTION_PIPELINE_ID = "DZLQsBfrkOw8C72N5iR7";
+
 export const SALES_PIPELINE_IDS = [
   "XPGm8d3T77gPiUVWldjA", // Council Workflow
   "sQkSEyojdMzfoZKqaWH8", // Non-Council Workflow
-  "DZLQsBfrkOw8C72N5iR7", // BA/Construction
+  BA_CONSTRUCTION_PIPELINE_ID, // BA/Construction
 ];
 
 export interface LiveOpportunity {
