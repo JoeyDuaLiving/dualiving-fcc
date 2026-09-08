@@ -1,4 +1,3 @@
-import Link from "next/link";
 import { PageHeader } from "@/components/shared/PageHeader";
 import { StatCard } from "@/components/shared/StatCard";
 import { Card } from "@/components/shared/Card";
@@ -19,9 +18,48 @@ import {
   liveWeightedExpectedDeposit,
   liveWeightedPipelineValue,
   loadLiveOpenOpportunities,
+  SALES_PIPELINE_IDS,
   type LiveOpportunity,
 } from "@/lib/ghl-source";
+import { getPipelines } from "@/integrations/ghl/opportunities";
+import { PipelineKanbanBoard, type KanbanPipeline } from "@/components/pipeline/PipelineKanbanBoard";
 import type { PipelineStage } from "@/types";
+
+/** Real pipeline/stage names and display order come straight from GHL's own
+ * config (GhlPipelineStage.position) - the sync only persists a flattened
+ * "Pipeline: Stage" string per opportunity, not the pipeline structure
+ * itself, so this is fetched live rather than reconstructed from already-
+ * synced data. Falls back to deriving a stage list from whatever's actually
+ * on the opportunities themselves (alphabetical, no real position) if the
+ * live call fails, so the board still renders without GHL being reachable. */
+async function loadPipelineStructure(opportunities: LiveOpportunity[]): Promise<KanbanPipeline[]> {
+  try {
+    const pipelines = await getPipelines();
+    return SALES_PIPELINE_IDS.map((id) => {
+      const p = pipelines.find((pipeline) => pipeline.id === id);
+      if (!p) return null;
+      return {
+        id: p.id,
+        name: p.name,
+        stages: [...p.stages].sort((a, b) => a.position - b.position).map((s) => ({ id: s.id, name: s.name })),
+      };
+    }).filter((p): p is KanbanPipeline => p !== null);
+  } catch {
+    return SALES_PIPELINE_IDS.map((id) => {
+      const opps = opportunities.filter((o) => o.pipelineId === id);
+      if (opps.length === 0) return null;
+      const stageMap = new Map<string, string>();
+      for (const o of opps) {
+        if (o.pipelineStageId) stageMap.set(o.pipelineStageId, o.stage.split(": ").slice(1).join(": ") || o.stage);
+      }
+      return {
+        id,
+        name: opps[0].stage.split(": ")[0] ?? id,
+        stages: [...stageMap.entries()].sort((a, b) => a[1].localeCompare(b[1])).map(([sid, name]) => ({ id: sid, name })),
+      };
+    }).filter((p): p is KanbanPipeline => p !== null);
+  }
+}
 
 export const dynamic = "force-dynamic";
 
@@ -38,19 +76,15 @@ export default async function PipelinePage() {
   if (isLive) {
     const open = live.opportunities;
     const depositPercent = settings.defaultDepositPercent;
-    const byStage = new Map<string, { count: number; value: number }>();
-    for (const o of open) {
-      const entry = byStage.get(o.stage) ?? { count: 0, value: 0 };
-      entry.count++;
-      entry.value += o.value;
-      byStage.set(o.stage, entry);
-    }
+    const pipelines = await loadPipelineStructure(open);
+    const opportunitiesByPipelineId: Record<string, LiveOpportunity[]> = {};
+    for (const p of pipelines) opportunitiesByPipelineId[p.id] = open.filter((o) => o.pipelineId === p.id);
 
     return (
       <div>
         <PageHeader
           title="Sales Pipeline"
-          description="Live from GoHighLevel - open opportunities in the Council Workflow and Non-Council Workflow pipelines. This is potential future revenue, never counted as committed cash until a contract converts to a Buildxact job."
+          description="Live from GoHighLevel - open opportunities in the Council Workflow, Non-Council Workflow and BA/Construction pipelines. This is potential future revenue, never counted as committed cash until a contract converts to a Buildxact job."
           action={<StatusPill tone="good">Live</StatusPill>}
         />
 
@@ -69,77 +103,20 @@ export default async function PipelinePage() {
           />
         </div>
 
-        <Card title="By stage" className="mb-6">
-          <div className="overflow-x-auto">
-            <div className="flex gap-4 min-w-max">
-              {[...byStage.entries()].map(([stage, s]) => (
-                <div key={stage} className="min-w-[180px]">
-                  <div className="text-xs text-slate-400">{stage}</div>
-                  <div className="text-lg font-semibold text-white tabular-nums mt-1">{formatAUD(s.value, { compact: true })}</div>
-                  <div className="text-[11px] text-slate-500">{s.count} opportunities</div>
-                </div>
-              ))}
-            </div>
-          </div>
-        </Card>
-
-        <Card title="Open opportunities">
-          <div className="overflow-x-auto">
-            <table className="w-full text-sm">
-              <thead>
-                <tr className="text-left text-xs text-slate-500 border-b border-slate-800">
-                  <th className="pb-2 font-medium">Opportunity</th>
-                  <th className="pb-2 font-medium">Stage</th>
-                  <th className="pb-2 font-medium text-right">Value</th>
-                  <th className="pb-2 font-medium text-right">Probability</th>
-                  <th className="pb-2 font-medium text-right">Expected deposit</th>
-                  <th className="pb-2 font-medium text-right">Weighted deposit</th>
-                  <th className="pb-2 font-medium">Expected close</th>
-                  <th className="pb-2 font-medium">Job</th>
-                  <th className="pb-2 font-medium">Source</th>
-                </tr>
-              </thead>
-              <tbody className="divide-y divide-slate-800/60">
-                {open.map((opp: LiveOpportunity) => (
-                  <tr key={opp.id} className="hover:bg-slate-900/60">
-                    <td className="py-2.5 text-slate-200">
-                      {opp.name}
-                      {opp.contact && <div className="text-[11px] text-slate-500">{opp.contact}</div>}
-                    </td>
-                    <td className="py-2.5 text-slate-400">{opp.stage}</td>
-                    <td className="py-2.5 text-right tabular-nums text-slate-300">{formatAUD(opp.value)}</td>
-                    <td className="py-2.5 text-right tabular-nums text-slate-300">{formatPercent(opp.probabilityPercent, 0)}</td>
-                    <td className="py-2.5 text-right tabular-nums text-slate-300">{formatAUD(liveExpectedDeposit(opp, depositPercent))}</td>
-                    <td className="py-2.5 text-right tabular-nums text-purple-300">{formatAUD(liveWeightedExpectedDeposit(opp, depositPercent))}</td>
-                    <td className="py-2.5 text-slate-400 whitespace-nowrap">{opp.expectedCloseDate ? formatDateAU(opp.expectedCloseDate) : "—"}</td>
-                    <td className="py-2.5">
-                      {opp.jobId ? (
-                        <Link href={`/jobs/${opp.jobId}`} className="text-brand-400 hover:text-brand-300">
-                          {opp.jobNumber ?? opp.jobId}
-                        </Link>
-                      ) : (
-                        <span className="text-slate-500">—</span>
-                      )}
-                    </td>
-                    <td className="py-2.5 text-slate-500">{opp.leadSource ?? "—"}</td>
-                  </tr>
-                ))}
-                {open.length === 0 && (
-                  <tr>
-                    <td colSpan={9} className="py-6 text-center text-slate-500">No open opportunities.</td>
-                  </tr>
-                )}
-              </tbody>
-            </table>
-          </div>
-        </Card>
+        {pipelines.length > 0 ? (
+          <PipelineKanbanBoard pipelines={pipelines} opportunitiesByPipelineId={opportunitiesByPipelineId} />
+        ) : (
+          <Card className="mb-6">
+            <p className="text-sm text-slate-400 py-4 text-center">No open opportunities in these pipelines.</p>
+          </Card>
+        )}
 
         <p className="text-xs text-slate-500 mt-3">
-          BA/Construction, Marketing Pipeline and Active Campaign Import are synced but not shown here - they
-          aren&rsquo;t genuine sales-value pipelines (Active Campaign Import in particular is a bulk historical
-          marketing-CRM import). Salesperson and product/range are also not shown - resolving them needs GHL API
-          scopes the current Private Integration Token doesn&rsquo;t have (Users API, location custom fields).
-          Deposit amounts use the management assumption in Settings ({depositPercent}%), not a value from GHL.
+          Marketing Pipeline and Active Campaign Import are synced but not shown here - they aren&rsquo;t genuine
+          sales-value pipelines (Active Campaign Import in particular is a bulk historical marketing-CRM import).
+          Salesperson and product/range are also not shown - resolving them needs GHL API scopes the current
+          Private Integration Token doesn&rsquo;t have (Users API, location custom fields). Deposit amounts use the
+          management assumption in Settings ({depositPercent}%), not a value from GHL.
         </p>
       </div>
     );

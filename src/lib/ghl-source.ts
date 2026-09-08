@@ -12,20 +12,21 @@ import { jobs, pipelineOpportunities } from "@/db/schema";
 // page's exclusion of won/lost) - status isn't a first-class column on
 // pipeline_opportunities, so it's read out of the synced `raw` JSON.
 //
-// Scoped to the Council Workflow and Non-Council Workflow pipelines only
-// (per user instruction) - the other 3 synced pipelines (BA/Construction,
-// Marketing Pipeline, Active Campaign Import) aren't genuine sales-value
-// pipelines: Active Campaign Import alone was 1,793 of 1,817 "open"
-// opportunities and $7.75M of $10.9M in live totals, almost entirely a bulk
-// historical marketing-CRM import (stages like "Contacted No Response",
-// "Follow Up Later Date") rather than real construction deals. All 5
-// pipelines still sync into the database in full for future reference - this
-// filter only applies to what the Pipeline page displays.
+// Scoped to Council Workflow, Non-Council Workflow and BA/Construction - the
+// other 2 synced pipelines (Marketing Pipeline, Active Campaign Import)
+// aren't genuine sales-value pipelines: Active Campaign Import alone was
+// 1,793 of 1,817 "open" opportunities and $7.75M of $10.9M in live totals,
+// almost entirely a bulk historical marketing-CRM import (stages like
+// "Contacted No Response", "Follow Up Later Date") rather than real
+// construction deals. All 5 pipelines still sync into the database in full
+// for future reference - this filter only applies to what the Pipeline page
+// displays.
 // ---------------------------------------------------------------------------
 
-const SALES_PIPELINE_IDS = [
+export const SALES_PIPELINE_IDS = [
   "XPGm8d3T77gPiUVWldjA", // Council Workflow
   "sQkSEyojdMzfoZKqaWH8", // Non-Council Workflow
+  "DZLQsBfrkOw8C72N5iR7", // BA/Construction
 ];
 
 export interface LiveOpportunity {
@@ -34,6 +35,8 @@ export interface LiveOpportunity {
   name: string;
   contact: string | null;
   stage: string;
+  pipelineId: string | null;
+  pipelineStageId: string | null;
   value: number;
   probabilityPercent: number;
   expectedCloseDate: string | null; // YYYY-MM-DD
@@ -73,12 +76,15 @@ export async function loadLiveOpenOpportunities(): Promise<LivePipelineResult> {
 
     const opportunities: LiveOpportunity[] = rows.map((row) => {
       const job = row.jobId ? jobById.get(row.jobId) : undefined;
+      const raw = row.raw as { pipelineId?: string; pipelineStageId?: string } | null;
       return {
         id: row.id,
         sourceId: row.sourceId,
         name: row.name,
         contact: row.contact,
         stage: row.stage,
+        pipelineId: raw?.pipelineId ?? null,
+        pipelineStageId: raw?.pipelineStageId ?? null,
         value: row.value,
         probabilityPercent: row.probabilityPercent,
         expectedCloseDate: row.expectedCloseDate ? row.expectedCloseDate.toISOString().slice(0, 10) : null,
