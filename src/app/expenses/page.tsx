@@ -90,7 +90,7 @@ export default async function ExpensesPage() {
         title="Expenses"
         description={
           isLive
-            ? "Live from Xero - operating expenses, classified fixed/variable using Xero's own chart-of-accounts type where available. Separate from job costs."
+            ? "Live from Xero - operating expenses, classified fixed/variable by whether the category recurs regardless of job volume. Separate from job costs."
             : "Operating expenses from Xero, classified as fixed or variable overhead - separate from job costs."
         }
         action={isLive ? <StatusPill tone="good">Live</StatusPill> : undefined}
@@ -117,15 +117,15 @@ export default async function ExpensesPage() {
         <Card title="Monthly fixed cost">
           <div className="text-2xl font-semibold text-white tabular-nums">{formatAUD(fixedCost)}</div>
           <p className="text-xs text-slate-500 mt-2">
-            {isLive
-              ? 'Recurs regardless of job volume - accounts using Xero\'s "OVERHEADS" type only (few in this tenant\'s chart of accounts, see By category below).'
-              : "Recurs regardless of job volume - wages, rent, insurance, subscriptions, finance."}
+            Recurs regardless of job volume - wages, rent, insurance, subscriptions, phones, accounting, finance and
+            statutory registrations{isLive ? " (see By category below for the full list)" : ""}.
           </p>
         </Card>
         <Card title="Monthly variable cost">
           <div className="text-2xl font-semibold text-white tabular-nums">{formatAUD(variableCost)}</div>
           <p className="text-xs text-slate-500 mt-2">
-            {isLive ? "Everything else - most real categories default here (see caveat below)." : "Scales with activity - marketing, fuel, vehicles, office, utilities."}
+            Scales with job activity or is discretionary/ad hoc - fuel, vehicle running costs, advertising, office
+            supplies and similar.
           </p>
         </Card>
         <Card title="Revenue required to cover OPEX">
@@ -138,9 +138,9 @@ export default async function ExpensesPage() {
 
       {isLive && (
         <p className="text-xs text-slate-500 mb-6">
-          Fixed/variable is Xero&rsquo;s own account Type where it says so (&ldquo;OVERHEADS&rdquo;), which this
-          tenant barely uses - almost everything defaults to &ldquo;variable&rdquo; rather than a real per-category
-          judgment. Job-related accounts (Xero&rsquo;s &ldquo;DIRECTCOSTS&rdquo; type) are excluded entirely since
+          Fixed/variable is a management judgment call (&ldquo;does this recur regardless of job volume&rdquo;) applied
+          per Xero account - not Xero&rsquo;s own account Type, which this tenant&rsquo;s chart of accounts barely tags
+          usefully. Job-related accounts (Xero&rsquo;s &ldquo;DIRECTCOSTS&rdquo; type) are excluded entirely since
           they&rsquo;re already captured via Buildxact&rsquo;s actual/committed cost.
         </p>
       )}

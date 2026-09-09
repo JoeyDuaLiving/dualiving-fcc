@@ -13,6 +13,7 @@ import {
   getSpendTransactions,
 } from "@/integrations/xero/accounting";
 import { parseXeroDate } from "@/integrations/xero/mappers";
+import { classifyOpexCategory } from "@/lib/opex-classification";
 import type { XeroAccount, XeroBankTransaction, XeroContact, XeroInvoice } from "@/integrations/xero/types";
 
 // ---------------------------------------------------------------------------
@@ -443,10 +444,8 @@ async function upsertOperatingExpenses(expenseAccounts: XeroAccount[], spendTxns
       source: "xero",
       sourceId,
       category,
-      // This tenant barely uses Xero's OVERHEADS account type (3 of 126
-      // expense accounts - see accounting.ts note), so this mostly
-      // defaults to "variable" rather than a real per-category judgment.
-      classification: account.Type === "OVERHEADS" ? "fixed" : "variable",
+      // Not Xero's own account Type - see opex-classification.ts for why.
+      classification: classifyOpexCategory(category),
       description: description ?? null,
       amount: lineAmount,
       date,

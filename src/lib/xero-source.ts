@@ -6,6 +6,7 @@ import type { XeroInvoice } from "@/integrations/xero/types";
 import { ageingBucket, daysOverdue, type AgeingBucket } from "@/lib/calculations";
 import { daysBetween } from "@/lib/format";
 import { TODAY } from "@/lib/mock-data";
+import { classifyOpexCategory } from "@/lib/opex-classification";
 
 // ---------------------------------------------------------------------------
 // Reads live Xero data from Postgres (populated by src/sync/xero.ts) - same
@@ -258,7 +259,11 @@ export async function loadLiveOperatingExpenses(): Promise<LiveOperatingExpenses
     return {
       expenses: rows.map((r) => ({
         category: r.category,
-        classification: r.classification as "fixed" | "variable",
+        // Recomputed here rather than trusted from the stored column, so
+        // the opex-classification.ts business-judgment list applies to
+        // already-synced rows immediately, not just rows synced after it
+        // last changed.
+        classification: classifyOpexCategory(r.category),
         description: r.description,
         amount: r.amount,
         date: toDateOnly(r.date),
