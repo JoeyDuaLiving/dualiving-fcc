@@ -53,10 +53,15 @@ export default async function ExpensesPage() {
   }));
 
   // A category with nothing recorded in the current period, previous period
-  // or YTD isn't useful in this table - just noise.
-  const rows = (isLive ? liveOpexCategoryBreakdown(liveOpex.expenses) : opexCategoryBreakdown()).filter(
-    (r) => r.current !== 0 || r.previous !== 0 || r.ytd !== 0
-  );
+  // or YTD isn't useful in this table - just noise. Mock rows carry a
+  // placeholder "typicalPaymentDay" since that's derived from real
+  // transaction dates only available in live mode - unifies the row type
+  // so the table doesn't need a separate mock-mode column layout.
+  const rows = (
+    isLive
+      ? liveOpexCategoryBreakdown(liveOpex.expenses)
+      : opexCategoryBreakdown().map((r) => ({ ...r, typicalPaymentDay: "—" }))
+  ).filter((r) => r.current !== 0 || r.previous !== 0 || r.ytd !== 0);
   const currentMonth = isLive ? liveCurrentMonthOpex(liveOpex.expenses) : currentMonthOpex();
   const monthlyAverage = isLive ? liveAverageMonthlyOpex(liveOpex.expenses) : averageMonthlyOpex();
   const annualised = isLive ? liveAnnualisedOpex(liveOpex.expenses) : annualisedOpex();
@@ -141,6 +146,13 @@ export default async function ExpensesPage() {
       )}
 
       <Card title="By category" className="mb-6">
+        {isLive && (
+          <p className="text-xs text-slate-500 mb-3">
+            &ldquo;Typical date paid&rdquo; is derived from this category&rsquo;s own transaction/bill dates (the
+            same dates the bank feed and Xero bills carry in) - a category needs at least 6 dated occurrences
+            before a pattern is trusted, otherwise it shows as varying or not enough history.
+          </p>
+        )}
         <div className="overflow-x-auto">
           <table className="w-full text-sm">
             <thead>
@@ -151,6 +163,7 @@ export default async function ExpensesPage() {
                 <th className="pb-2 font-medium text-right">Previous month</th>
                 <th className="pb-2 font-medium text-right">YTD</th>
                 <th className="pb-2 font-medium text-right">Monthly average</th>
+                <th className="pb-2 font-medium">Typical date paid</th>
               </tr>
             </thead>
             <tbody className="divide-y divide-slate-800/60">
@@ -164,6 +177,7 @@ export default async function ExpensesPage() {
                   <td className="py-2.5 text-right tabular-nums text-slate-300">{formatAUD(row.previous)}</td>
                   <td className="py-2.5 text-right tabular-nums text-slate-300">{formatAUD(row.ytd)}</td>
                   <td className="py-2.5 text-right tabular-nums text-slate-300">{formatAUD(row.monthlyAverage)}</td>
+                  <td className="py-2.5 text-slate-400">{row.typicalPaymentDay}</td>
                 </tr>
               ))}
             </tbody>

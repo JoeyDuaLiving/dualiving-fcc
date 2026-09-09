@@ -332,6 +332,63 @@ export interface LiveOpexCategoryRow {
   previous: number;
   ytd: number;
   monthlyAverage: number;
+  typicalPaymentDay: string;
+}
+
+const WEEKDAY_NAMES = ["Sundays", "Mondays", "Tuesdays", "Wednesdays", "Thursdays", "Fridays", "Saturdays"];
+
+function ordinal(n: number): string {
+  const v = n % 100;
+  if (v >= 11 && v <= 13) return `${n}th`;
+  switch (n % 10) {
+    case 1: return `${n}st`;
+    case 2: return `${n}nd`;
+    case 3: return `${n}rd`;
+    default: return `${n}th`;
+  }
+}
+
+// Derived straight from this category's own transaction/bill dates (the
+// same dates the bank feed and Xero bills carry in) - not a guess. A
+// category needs at least 6 dated occurrences before it's trusted to have
+// a pattern at all; below that, a "typical day" would just be overfitting
+// noise from 1-2 data points.
+function typicalPaymentDayLabel(dates: string[]): string {
+  const MIN_OCCURRENCES = 6;
+  if (dates.length < MIN_OCCURRENCES) return "Not enough history";
+
+  const parsed = dates.map((d) => new Date(`${d}T00:00:00Z`)).sort((a, b) => a.getTime() - b.getTime());
+  const n = parsed.length;
+
+  const dayCounts = new Map<number, number>();
+  const weekdayCounts = new Map<number, number>();
+  for (const d of parsed) {
+    dayCounts.set(d.getUTCDate(), (dayCounts.get(d.getUTCDate()) ?? 0) + 1);
+    weekdayCounts.set(d.getUTCDay(), (weekdayCounts.get(d.getUTCDay()) ?? 0) + 1);
+  }
+
+  const gaps: number[] = [];
+  for (let i = 1; i < parsed.length; i++) gaps.push((parsed[i].getTime() - parsed[i - 1].getTime()) / 86_400_000);
+  const avgGapDays = gaps.reduce((s, g) => s + g, 0) / gaps.length;
+
+  const [topWeekday, topWeekdayCount] = [...weekdayCounts.entries()].sort((a, b) => b[1] - a[1])[0];
+  const [topDay, topDayCount] = [...dayCounts.entries()].sort((a, b) => b[1] - a[1])[0];
+  const weekdayShare = topWeekdayCount / n;
+  const dayShare = topDayCount / n;
+
+  // A weekly cadence needs both a dominant weekday AND a real ~7-day gap
+  // between occurrences - a dominant weekday alone can just mean "always
+  // posts on a business day", not "recurs every week".
+  if (weekdayShare >= 0.5 && avgGapDays >= 5 && avgGapDays <= 10) {
+    return `Weekly, ${WEEKDAY_NAMES[topWeekday]}`;
+  }
+  if (dayShare >= 0.35) {
+    return topDay >= 28 ? "Around month-end" : `Around the ${ordinal(topDay)} of the month`;
+  }
+  if (weekdayShare >= 0.5) {
+    return `Most often ${WEEKDAY_NAMES[topWeekday]}`;
+  }
+  return "Varies";
 }
 
 export function liveOpexCategoryBreakdown(expenses: LiveOperatingExpense[]): LiveOpexCategoryRow[] {
@@ -349,11 +406,12 @@ export function liveOpexCategoryBreakdown(expenses: LiveOperatingExpense[]): Liv
   // by roughly half.
   const completeMonthTotals = new Map<string, number>();
   const completeMonthsSeen = new Set<string>();
+  const datesByCategory = new Map<string, string[]>();
 
   for (const e of expenses) {
     const monthKey = opexMonthKey(e.date);
     if (!categories.has(e.category)) {
-      categories.set(e.category, { category: e.category, classification: e.classification, current: 0, previous: 0, ytd: 0, monthlyAverage: 0 });
+      categories.set(e.category, { category: e.category, classification: e.classification, current: 0, previous: 0, ytd: 0, monthlyAverage: 0, typicalPaymentDay: "" });
     }
     const row = categories.get(e.category)!;
     if (monthKey === currentMonth) row.current += e.amount;
@@ -363,10 +421,15 @@ export function liveOpexCategoryBreakdown(expenses: LiveOperatingExpense[]): Liv
       completeMonthTotals.set(e.category, (completeMonthTotals.get(e.category) ?? 0) + e.amount);
       completeMonthsSeen.add(monthKey);
     }
+    if (!datesByCategory.has(e.category)) datesByCategory.set(e.category, []);
+    datesByCategory.get(e.category)!.push(e.date);
   }
 
   const monthCount = completeMonthsSeen.size || 1;
-  for (const row of categories.values()) row.monthlyAverage = (completeMonthTotals.get(row.category) ?? 0) / monthCount;
+  for (const row of categories.values()) {
+    row.monthlyAverage = (completeMonthTotals.get(row.category) ?? 0) / monthCount;
+    row.typicalPaymentDay = typicalPaymentDayLabel(datesByCategory.get(row.category) ?? []);
+  }
 
   return Array.from(categories.values()).sort((a, b) => b.ytd - a.ytd);
 }
