@@ -163,7 +163,7 @@ export default async function ExpensesPage() {
                 <th className="pb-2 font-medium text-right">Previous month</th>
                 <th className="pb-2 font-medium text-right">YTD</th>
                 <th className="pb-2 font-medium text-right">Monthly average</th>
-                <th className="pb-2 font-medium">Typical date paid</th>
+                <th className="pb-2 pl-6 font-medium">Typical date paid</th>
               </tr>
             </thead>
             <tbody className="divide-y divide-slate-800/60">
@@ -177,7 +177,7 @@ export default async function ExpensesPage() {
                   <td className="py-2.5 text-right tabular-nums text-slate-300">{formatAUD(row.previous)}</td>
                   <td className="py-2.5 text-right tabular-nums text-slate-300">{formatAUD(row.ytd)}</td>
                   <td className="py-2.5 text-right tabular-nums text-slate-300">{formatAUD(row.monthlyAverage)}</td>
-                  <td className="py-2.5 text-slate-400">{row.typicalPaymentDay}</td>
+                  <td className="py-2.5 pl-6 text-slate-400">{row.typicalPaymentDay}</td>
                 </tr>
               ))}
             </tbody>
