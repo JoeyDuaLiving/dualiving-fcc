@@ -365,6 +365,42 @@ export const bankAccounts = pgTable(
   (t) => [uniqueIndex("bank_accounts_source_idx").on(t.source, t.sourceId)]
 );
 
+// Single-row-per-source snapshot of Xero's own Profit & Loss report for the
+// current financial year to date - real Total Income/Gross Profit/Net
+// Profit figures, not derived from our own invoice/margin assumptions. See
+// getProfitAndLossSummary/getFinancialYearStart in integrations/xero.
+export const financialSummary = pgTable(
+  "financial_summary",
+  {
+    id: id(),
+    source: text("source").notNull(),
+    sourceId: text("source_id").notNull(), // "fy-to-date" - one row per source today
+    fyStartDate: timestamp("fy_start_date").notNull(),
+    revenueFyTd: doublePrecision("revenue_fy_td").notNull(),
+    grossProfitFyTd: doublePrecision("gross_profit_fy_td").notNull(),
+    netProfitFyTd: doublePrecision("net_profit_fy_td").notNull(),
+    asOf: timestamp("as_of").notNull(),
+    updatedAt: timestamp("updated_at").notNull().defaultNow(),
+  },
+  (t) => [uniqueIndex("financial_summary_source_idx").on(t.source, t.sourceId)]
+);
+
+// Single-row manual entry of the real bank statement balance, since Xero's
+// Accounting API only exposes the reconciled ledger balance (bank_accounts
+// above) - the live "Statement Balance" shown on Xero's own Bank Accounts
+// screen comes from the bank feed directly and isn't exposed to a normal
+// OAuth Accounting API app (confirmed live 2026-09-13: no such field on
+// /Accounts or /Reports/BankSummary). The user punches this in whenever
+// they check it in Xero/online banking; the Dashboard's "Current bank
+// balance" card reads it, falling back to the Xero ledger balance until
+// it's ever been set.
+export const manualBankBalance = pgTable("manual_bank_balance", {
+  id: id(),
+  balance: doublePrecision("balance").notNull(),
+  asOf: timestamp("as_of").notNull(),
+  updatedAt: timestamp("updated_at").notNull().defaultNow(),
+});
+
 export const customers = pgTable(
   "customers",
   {

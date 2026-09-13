@@ -1,7 +1,7 @@
 import "server-only";
 import { eq, gt } from "drizzle-orm";
 import { db } from "@/db/client";
-import { bankAccounts, bills as billsTable, invoices as invoicesTable, jobs, operatingExpenses } from "@/db/schema";
+import { bankAccounts, bills as billsTable, financialSummary, invoices as invoicesTable, jobs, operatingExpenses } from "@/db/schema";
 import type { XeroInvoice } from "@/integrations/xero/types";
 import { ageingBucket, daysOverdue, type AgeingBucket } from "@/lib/calculations";
 import { daysBetween } from "@/lib/format";
@@ -116,29 +116,36 @@ export function liveTotalOverdue(invoices: LiveInvoice[], minDays = 0): number {
   return invoices.filter((i) => daysOverdue(i.dueDate) > minDays).reduce((s, i) => s + i.amountOutstanding, 0);
 }
 
-export interface LiveYtdRevenueResult {
+export interface LiveFinancialYearSummary {
+  fyStartDate: string; // YYYY-MM-DD
   revenue: number;
+  grossProfit: number;
+  netProfit: number;
+  asOf: string; // YYYY-MM-DD
   source: "live" | "unavailable";
 }
 
-/** Sum of Xero AR invoice amounts issued this calendar year, regardless of
- * paid/outstanding status - loadLiveReceivables() above only covers
- * invoices still owed, which understates true YTD revenue once anything's
- * been paid. */
-export async function liveYtdRevenue(): Promise<LiveYtdRevenueResult> {
+/** Real Xero Profit & Loss figures (Total Income / Gross Profit / Net
+ * Profit) for the financial year to date - not our own revenue*margin
+ * assumption. Populated by the sync's P&L step (src/sync/xero.ts), FY start
+ * derived from Xero's own Organisation settings (getFinancialYearStart),
+ * not hardcoded to 1 July. */
+export async function loadLiveFinancialYearSummary(): Promise<LiveFinancialYearSummary> {
   try {
-    const rows = await db
-      .select({ amount: invoicesTable.amount, issueDate: invoicesTable.issueDate })
-      .from(invoicesTable)
-      .where(eq(invoicesTable.source, "xero"));
-    if (rows.length === 0) return { revenue: 0, source: "unavailable" };
-    const currentYear = TODAY.slice(0, 4);
-    const revenue = rows
-      .filter((r) => r.issueDate && r.issueDate.toISOString().slice(0, 4) === currentYear)
-      .reduce((s, r) => s + r.amount, 0);
-    return { revenue, source: "live" };
+    const [row] = await db.select().from(financialSummary).where(eq(financialSummary.source, "xero"));
+    if (!row) {
+      return { fyStartDate: TODAY, revenue: 0, grossProfit: 0, netProfit: 0, asOf: TODAY, source: "unavailable" };
+    }
+    return {
+      fyStartDate: toDateOnly(row.fyStartDate),
+      revenue: row.revenueFyTd,
+      grossProfit: row.grossProfitFyTd,
+      netProfit: row.netProfitFyTd,
+      asOf: toDateOnly(row.asOf),
+      source: "live",
+    };
   } catch {
-    return { revenue: 0, source: "unavailable" };
+    return { fyStartDate: TODAY, revenue: 0, grossProfit: 0, netProfit: 0, asOf: TODAY, source: "unavailable" };
   }
 }
 

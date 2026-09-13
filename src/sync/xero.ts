@@ -1,15 +1,17 @@
 import "server-only";
 import { and, eq, gt, isNull, notInArray, sql } from "drizzle-orm";
 import { db } from "@/db/client";
-import { bankAccounts, bills, customers, invoices, jobs, operatingExpenses, suppliers, syncErrors, syncRuns } from "@/db/schema";
+import { bankAccounts, bills, customers, financialSummary, invoices, jobs, operatingExpenses, suppliers, syncErrors, syncRuns } from "@/db/schema";
 import {
   getBankAccounts,
   getBankSummary,
   getBillsForOpex,
   getContacts,
   getExpenseAccounts,
+  getFinancialYearStart,
   getInvoices,
   getOutstandingBills,
+  getProfitAndLossSummary,
   getSpendTransactions,
 } from "@/integrations/xero/accounting";
 import { parseXeroDate } from "@/integrations/xero/mappers";
@@ -186,6 +188,41 @@ export async function syncXero(): Promise<XeroSyncResult> {
       recordsUpdated += updated;
     } catch (err) {
       await logError(undefined, `Operating expenses: ${err instanceof Error ? err.message : String(err)}`);
+    }
+
+    // --- Financial year P&L summary (real Xero Revenue/Gross Profit/Net
+    // Profit for the year to date, not our own margin assumption) ----------
+    try {
+      const now = new Date();
+      const fyStart = await getFinancialYearStart(now);
+      const pl = await getProfitAndLossSummary(fyStart.toISOString().slice(0, 10), now.toISOString().slice(0, 10));
+      const [result] = await db
+        .insert(financialSummary)
+        .values({
+          source: "xero",
+          sourceId: "fy-to-date",
+          fyStartDate: fyStart,
+          revenueFyTd: pl.revenue,
+          grossProfitFyTd: pl.grossProfit,
+          netProfitFyTd: pl.netProfit,
+          asOf: now,
+        })
+        .onConflictDoUpdate({
+          target: [financialSummary.source, financialSummary.sourceId],
+          set: {
+            fyStartDate: sql`excluded.fy_start_date`,
+            revenueFyTd: sql`excluded.revenue_fy_td`,
+            grossProfitFyTd: sql`excluded.gross_profit_fy_td`,
+            netProfitFyTd: sql`excluded.net_profit_fy_td`,
+            asOf: sql`excluded.as_of`,
+            updatedAt: new Date(),
+          },
+        })
+        .returning({ id: financialSummary.id, wasNew: sql<boolean>`(xmax = 0)` });
+      if (result?.wasNew) recordsImported++;
+      else recordsUpdated++;
+    } catch (err) {
+      await logError(undefined, `Financial year P&L summary: ${err instanceof Error ? err.message : String(err)}`);
     }
   } catch (err) {
     await logError(undefined, `Sync aborted: ${err instanceof Error ? err.message : String(err)}`);

@@ -25,22 +25,25 @@ import {
   ytdFinancials,
 } from "@/lib/calculations";
 import { bankAccounts, settings } from "@/lib/mock-data";
-import { loadLiveBankSummary, loadLiveReceivables, loadLivePayables, liveAverageMonthlyOpex, liveYtdRevenue } from "@/lib/xero-source";
+import { loadLiveBankSummary, loadLiveReceivables, loadLivePayables, liveAverageMonthlyOpex, loadLiveFinancialYearSummary } from "@/lib/xero-source";
 import { buildLiveForecastItems, generateLiveAlerts, liveCashRequiredToFinish, liveTotalActiveJobCashRequirement, liveTotalWip, loadLiveForecastData } from "@/lib/live-forecast";
 import { liveConfirmedFutureRevenue, liveNextPayment } from "@/lib/jobs-source";
 import { liveWeightedPipelineValue } from "@/lib/ghl-source";
 import { loadReconciliation } from "@/lib/reconciliation-source";
+import { loadManualBankBalance } from "@/lib/manual-bank-balance-source";
+import { BankBalanceCard } from "@/components/dashboard/BankBalanceCard";
 
 export const dynamic = "force-dynamic";
 
 export default async function DashboardPage() {
-  const [liveBank, liveReceivables, livePayables, liveForecast, liveRevenue, reconciliation] = await Promise.all([
+  const [liveBank, liveReceivables, livePayables, liveForecast, liveFinancialYear, reconciliation, manualBankBalance] = await Promise.all([
     loadLiveBankSummary(),
     loadLiveReceivables(),
     loadLivePayables(),
     loadLiveForecastData(),
-    liveYtdRevenue(),
+    loadLiveFinancialYearSummary(),
     loadReconciliation(),
+    loadManualBankBalance(),
   ]);
   const cashIsLive = liveBank.source === "live";
   const arIsLive = liveReceivables.source === "live";
@@ -62,13 +65,18 @@ export default async function DashboardPage() {
   const wip = forecastIsLive ? liveTotalWip(liveForecast.data!.jobRows) : totalWip();
   const cashRequired = forecastIsLive ? liveTotalActiveJobCashRequirement(liveForecast.data!.jobRows) : totalActiveJobCashRequirement();
 
-  // Live mode has no computed blended margin (would need full invoice-level
-  // cost attribution, not just outstanding balances) - uses the management
-  // target margin instead, same convention as the Expenses page.
+  // Live mode uses Xero's own Profit & Loss report for the financial year
+  // to date (FY start from Xero's Organisation settings, not hardcoded) -
+  // real Total Income/Gross Profit figures, not a revenue*margin guess.
   const ytd = ytdFinancials();
-  const revenueYtd = forecastIsLive && liveRevenue.source === "live" ? liveRevenue.revenue : ytd.revenue;
-  const marginPercent = forecastIsLive ? settings.marginTargetPercent : ytd.marginPercent || 25;
-  const grossProfitYtd = forecastIsLive ? revenueYtd * (marginPercent / 100) : ytd.grossProfit;
+  const financialYearIsLive = forecastIsLive && liveFinancialYear.source === "live";
+  const revenueYtd = financialYearIsLive ? liveFinancialYear.revenue : ytd.revenue;
+  const grossProfitYtd = financialYearIsLive ? liveFinancialYear.grossProfit : ytd.grossProfit;
+  const marginPercent = financialYearIsLive
+    ? revenueYtd > 0
+      ? (grossProfitYtd / revenueYtd) * 100
+      : 0
+    : ytd.marginPercent || 25;
   const monthlyOpex = forecastIsLive ? liveAverageMonthlyOpex(liveForecast.data!.operatingExpenses) : averageMonthlyOpex();
   const runwayMonths = forecastIsLive ? (monthlyOpex > 0 ? bankBalance / monthlyOpex : Infinity) : simpleCashRunwayMonths();
   const confirmedRevenue = forecastIsLive ? liveConfirmedFutureRevenue(liveForecast.data!.jobRows) : confirmedFutureRevenue();
@@ -145,8 +153,14 @@ export default async function DashboardPage() {
         {(cashIsLive || arIsLive || apIsLive || forecastIsLive) && <StatusPill tone="good">Live where connected</StatusPill>}
       </div>
       <div className="grid grid-cols-2 md:grid-cols-4 xl:grid-cols-7 gap-3 mb-6">
-        <StatCard label="Current bank balance" value={formatAUD(bankBalance)} tone={cashIsLive && bankBalance < 0 ? "bad" : "default"} sub={cashIsLive ? "Xero, live" : "All accounts"} href="/cash-flow" />
-        <StatCard label="Cash available" value={formatAUD(cashIsLive ? bankBalance : operatingBalance)} tone={cashIsLive && bankBalance < 0 ? "bad" : "default"} sub={cashIsLive ? "Xero, live" : "Operating account"} href="/cash-flow" />
+        <BankBalanceCard balance={manualBankBalance.balance} asOf={manualBankBalance.asOf} isSet={manualBankBalance.set} fallbackBalance={bankBalance} />
+        <StatCard
+          label="Cash available"
+          value={formatAUD(cashIsLive ? bankBalance : operatingBalance)}
+          tone={cashIsLive && bankBalance < 0 ? "bad" : "default"}
+          sub={cashIsLive ? "Xero ledger, live" : "Operating account"}
+          href="/cash-flow"
+        />
         <StatCard label="Accounts receivable" value={formatAUD(ar)} sub={`${arCount} open invoices${arIsLive ? " · live" : ""}`} href="/receivables" />
         <StatCard label="Accounts payable" value={formatAUD(ap)} sub={`${apCount} open bills${apIsLive ? " · live" : ""}`} href="/payables" />
         <StatCard label="Current WIP" value={formatAUD(wip)} sub="Cost incurred, not yet billed" href="/jobs" />
@@ -196,11 +210,16 @@ export default async function DashboardPage() {
 
       {/* KPI grid */}
       <div className="grid grid-cols-2 md:grid-cols-4 gap-3 mb-6">
-        <StatCard label="Revenue YTD" value={formatAUD(revenueYtd, { compact: true })} sub={forecastIsLive ? "Xero, live" : undefined} href="/jobs" />
         <StatCard
-          label="Gross profit YTD"
+          label="Revenue FYTD"
+          value={formatAUD(revenueYtd, { compact: true })}
+          sub={financialYearIsLive ? `Xero, live · FY from ${formatDateAU(liveFinancialYear.fyStartDate)}` : undefined}
+          href="/jobs"
+        />
+        <StatCard
+          label="Gross profit FYTD"
           value={formatAUD(grossProfitYtd, { compact: true })}
-          sub={forecastIsLive ? `${marginPercent.toFixed(1)}% management target margin` : `${marginPercent.toFixed(1)}% margin`}
+          sub={financialYearIsLive ? `${marginPercent.toFixed(1)}% margin · Xero P&L` : `${marginPercent.toFixed(1)}% margin`}
           href="/jobs"
         />
         <StatCard label="Monthly OPEX" value={formatAUD(monthlyOpex, { compact: true })} sub={forecastIsLive ? "Xero, live avg" : "Avg of last 2 months"} href="/expenses" />

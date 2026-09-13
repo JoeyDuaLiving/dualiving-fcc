@@ -10,6 +10,7 @@ import type {
   XeroInvoice,
   XeroInvoicesResponse,
   XeroReportResponse,
+  XeroReportRow,
 } from "./types";
 
 // ---------------------------------------------------------------------------
@@ -180,4 +181,59 @@ export async function getSpendTransactions(monthsBack = 14, maxPages = 50): Prom
     if (!result.pagination || page >= result.pagination.pageCount) break;
   }
   return all;
+}
+
+interface OrganisationResponse {
+  Organisations: { FinancialYearEndDay?: number; FinancialYearEndMonth?: number }[];
+}
+
+/** The financial-year-start date (UTC midnight) containing `asOf`, derived
+ * from Xero's own Organisation settings rather than hardcoded to 1 July -
+ * confirmed live 2026-09-13 this tenant runs a standard AU year
+ * (FinancialYearEndMonth 6, FinancialYearEndDay 30), so this correctly
+ * resolves to 1 July, but it works for any FYE Xero has on file. Treats the
+ * FY as starting on the 1st of the month after FinancialYearEndMonth -
+ * true for every standard (calendar-month-aligned) FYE, which covers this
+ * tenant and the vast majority of real orgs. */
+export async function getFinancialYearStart(asOf: Date): Promise<Date> {
+  const result = await xeroGet<OrganisationResponse>("/Organisation");
+  const org = result.Organisations[0];
+  const endMonth = org?.FinancialYearEndMonth ?? 6; // 1-indexed; default to AU's 30 June if Xero omits it
+  const startMonthIndex = endMonth % 12; // 0-indexed month the FY starts in (June=6 -> July=6 0-indexed)
+
+  const candidateThisYear = new Date(Date.UTC(asOf.getUTCFullYear(), startMonthIndex, 1));
+  return asOf.getTime() >= candidateThisYear.getTime() ? candidateThisYear : new Date(Date.UTC(asOf.getUTCFullYear() - 1, startMonthIndex, 1));
+}
+
+export interface ProfitAndLossSummary {
+  revenue: number;
+  grossProfit: number;
+  netProfit: number;
+}
+
+/** Confirmed live 2026-09-13: unlike BankSummary's fixed 5-column layout,
+ * ProfitAndLoss rows carry a real label in Cells[0] ("Total Income",
+ * "Gross Profit", "Net Profit" among others) - so this walks every row
+ * regardless of section/nesting and picks the 3 headline figures out by
+ * that label, robust to Xero reordering or renaming other lines. */
+export async function getProfitAndLossSummary(fromDate: string, toDate: string): Promise<ProfitAndLossSummary> {
+  const result = await xeroGet<XeroReportResponse>("/Reports/ProfitAndLoss", { fromDate, toDate });
+  const report = result.Reports[0];
+  const valueByLabel = new Map<string, number>();
+
+  function walk(rows: XeroReportRow[]) {
+    for (const row of rows) {
+      if (row.Cells && row.Cells.length >= 2 && row.Cells[0].Value) {
+        valueByLabel.set(row.Cells[0].Value, Number(row.Cells[1].Value ?? 0));
+      }
+      if (row.Rows) walk(row.Rows);
+    }
+  }
+  walk(report.Rows);
+
+  return {
+    revenue: valueByLabel.get("Total Income") ?? 0,
+    grossProfit: valueByLabel.get("Gross Profit") ?? 0,
+    netProfit: valueByLabel.get("Net Profit") ?? 0,
+  };
 }
