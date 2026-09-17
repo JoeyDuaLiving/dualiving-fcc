@@ -7,14 +7,14 @@ import { StatCard } from "@/components/shared/StatCard";
 import { WhatIfChart, type WhatIfSeriesMeta } from "@/components/charts/WhatIfChart";
 import { formatAUD, formatAUDSigned, formatDateAU, formatMonthAU } from "@/lib/format";
 import { baselineMonthlyDelta, firstMonthBelowBuffer, projectMonthlyBalance } from "@/lib/what-if-calculations";
-import type { WhatIfAdjustmentDTO, WhatIfScenarioDTO } from "@/lib/what-if-source";
+import type { WhatIfAdjustmentCategory, WhatIfAdjustmentDTO, WhatIfScenarioDTO } from "@/lib/what-if-source";
 
 const SCENARIO_COLORS = ["#607161", "#f59e0b", "#38bdf8", "#fb7185", "#a78bfa", "#34d399"];
 const HORIZON_OPTIONS = [6, 12, 24] as const;
 
 interface NewAdjustmentState {
   label: string;
-  category: "wages" | "other";
+  category: WhatIfAdjustmentCategory;
   amount: string;
   effect: "cost" | "saving";
   startDate: string;
@@ -398,6 +398,7 @@ export function WhatIfClient({
                   className="w-full bg-slate-800 border border-slate-700 rounded-md px-2 py-1.5 text-sm text-slate-200"
                 >
                   <option value="wages">Wages</option>
+                  <option value="revenue">Revenue</option>
                   <option value="other">Other</option>
                 </select>
               </div>

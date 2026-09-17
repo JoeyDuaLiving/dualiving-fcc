@@ -10,10 +10,12 @@ import { whatIfAdjustments, whatIfScenarios } from "@/db/schema";
 // multi-month projection - this file just loads the user's saved inputs.
 // ---------------------------------------------------------------------------
 
+export type WhatIfAdjustmentCategory = "wages" | "revenue" | "other";
+
 export interface WhatIfAdjustmentDTO {
   id: string;
   label: string;
-  category: "wages" | "other";
+  category: WhatIfAdjustmentCategory;
   monthlyAmount: number; // signed - positive = extra cost, negative = saving/extra income
   startDate: string; // YYYY-MM-DD
   endDate: string | null;
@@ -41,7 +43,7 @@ export async function loadWhatIfScenarios(): Promise<LoadWhatIfScenariosResult> 
       const dto: WhatIfAdjustmentDTO = {
         id: a.id,
         label: a.label,
-        category: a.category === "wages" ? "wages" : "other",
+        category: a.category === "wages" || a.category === "revenue" ? a.category : "other",
         monthlyAmount: a.monthlyAmount,
         startDate: a.startDate.toISOString().slice(0, 10),
         endDate: a.endDate ? a.endDate.toISOString().slice(0, 10) : null,

@@ -4,7 +4,7 @@ import { eq } from "drizzle-orm";
 
 interface UpdateAdjustmentBody {
   label?: string;
-  category?: "wages" | "other";
+  category?: "wages" | "revenue" | "other";
   monthlyAmount?: number;
   startDate?: string; // YYYY-MM-DD
   endDate?: string | null;

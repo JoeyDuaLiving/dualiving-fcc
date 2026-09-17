@@ -1,9 +1,11 @@
 import { PageHeader } from "@/components/shared/PageHeader";
 import { WhatIfClient } from "@/components/what-if/WhatIfClient";
+import { WhatIfChatPanel } from "@/components/what-if/WhatIfChatPanel";
 import { cashForecastSeries, summarizeForecast } from "@/lib/calculations";
 import { buildLiveForecastItems, loadLiveForecastData } from "@/lib/live-forecast";
 import { loadWhatIfScenarios } from "@/lib/what-if-source";
 import { settings, TODAY } from "@/lib/mock-data";
+import { isAnthropicConfigured } from "@/integrations/anthropic/client";
 
 export const dynamic = "force-dynamic";
 
@@ -34,6 +36,8 @@ export default async function WhatIfPage() {
           today&rsquo;s baseline trend.
         </div>
       )}
+
+      {forecastIsLive && isAnthropicConfigured() && <WhatIfChatPanel scenarios={scenariosResult.scenarios} />}
 
       {forecastIsLive && (
         <WhatIfClient

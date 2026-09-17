@@ -4,7 +4,7 @@ import { whatIfAdjustments } from "@/db/schema";
 interface CreateAdjustmentBody {
   scenarioId: string;
   label: string;
-  category: "wages" | "other";
+  category: "wages" | "revenue" | "other";
   monthlyAmount: number; // signed - positive = extra cost, negative = saving/extra income
   startDate: string; // YYYY-MM-DD
   endDate?: string | null;
