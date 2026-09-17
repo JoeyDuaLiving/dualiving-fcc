@@ -15,6 +15,7 @@ import {
   GitCompareArrows,
   BellRing,
   Settings as SettingsIcon,
+  Calculator,
 } from "lucide-react";
 
 const NAV = [
@@ -29,6 +30,7 @@ const NAV = [
   { href: "/forecast", label: "Forecast", icon: SlidersHorizontal },
   { href: "/reconciliation", label: "Reconciliation", icon: GitCompareArrows },
   { href: "/alerts", label: "Alerts", icon: BellRing },
+  { href: "/calculators", label: "Calculators", icon: Calculator },
   { href: "/settings", label: "Settings", icon: SettingsIcon },
 ];
 
