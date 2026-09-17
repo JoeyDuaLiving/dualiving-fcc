@@ -183,6 +183,36 @@ export const quotedJobStages = pgTable("quoted_job_stages", {
   updatedAt: timestamp("updated_at").notNull().defaultNow(),
 });
 
+// "What if" scenario planning - a saved, named hypothetical (e.g. "Hire a
+// PM", "5% wage increase") made up of one or more recurring monthly cost/
+// income adjustments layered on top of the live cash forecast's own current
+// monthly trend. See what-if-calculations.ts for how these combine with
+// the baseline; this table only stores the user's own inputs.
+export const whatIfScenarios = pgTable("what_if_scenarios", {
+  id: id(),
+  name: text("name").notNull(),
+  description: text("description"),
+  createdBy: text("created_by"),
+  createdAt: timestamp("created_at").notNull().defaultNow(),
+  updatedAt: timestamp("updated_at").notNull().defaultNow(),
+});
+
+export const whatIfAdjustments = pgTable("what_if_adjustments", {
+  id: id(),
+  scenarioId: text("scenario_id")
+    .notNull()
+    .references(() => whatIfScenarios.id, { onDelete: "cascade" }),
+  label: text("label").notNull(),
+  category: text("category").notNull(), // "wages" | "other" - display grouping only
+  // Signed monthly $ impact on cash: positive = extra cost (reduces cash),
+  // negative = a saving or extra income (increases cash).
+  monthlyAmount: doublePrecision("monthly_amount").notNull(),
+  startDate: timestamp("start_date").notNull(),
+  endDate: timestamp("end_date"),
+  createdAt: timestamp("created_at").notNull().defaultNow(),
+  updatedAt: timestamp("updated_at").notNull().defaultNow(),
+});
+
 export const auditLogs = pgTable("audit_logs", {
   id: id(),
   action: text("action").notNull(), // "sync" | "manual_adjustment" | "login" | "settings_change"

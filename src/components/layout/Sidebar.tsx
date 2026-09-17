@@ -16,6 +16,7 @@ import {
   BellRing,
   Settings as SettingsIcon,
   Calculator,
+  Milestone,
 } from "lucide-react";
 
 const NAV = [
@@ -28,6 +29,7 @@ const NAV = [
   { href: "/expenses", label: "Expenses", icon: Wallet },
   { href: "/pipeline", label: "Sales Pipeline", icon: Target },
   { href: "/forecast", label: "Forecast", icon: SlidersHorizontal },
+  { href: "/what-if", label: "What If", icon: Milestone },
   { href: "/reconciliation", label: "Reconciliation", icon: GitCompareArrows },
   { href: "/alerts", label: "Alerts", icon: BellRing },
   { href: "/calculators", label: "Calculators", icon: Calculator },

@@ -52,6 +52,11 @@ export function formatDateShortAU(iso: string): string {
   }).format(parseISODateUTC(iso));
 }
 
+export function formatMonthAU(monthKey: string): string {
+  const [y, m] = monthKey.slice(0, 7).split("-").map(Number);
+  return new Intl.DateTimeFormat("en-AU", { month: "short", year: "numeric", timeZone: "UTC" }).format(new Date(Date.UTC(y, m - 1, 1)));
+}
+
 export function formatPercent(value: number, digits = 1): string {
   return `${value.toFixed(digits)}%`;
 }
