@@ -29,6 +29,7 @@ import {
   loadLiveFinancialYearSummary,
   loadLiveOperatingExpenses,
   loadLivePreviousMonthRevenue,
+  loadLiveTrailingAverageRevenue,
 } from "@/lib/xero-source";
 import { RecurringLiabilitiesManager } from "@/components/expenses/RecurringLiabilitiesManager";
 import { loadRecurringLiabilities, monthlyEquivalent, projectLiabilityOccurrences } from "@/lib/recurring-liabilities-source";
@@ -45,12 +46,13 @@ const CATEGORY_LABEL: Record<string, string> = {
 };
 
 export default async function ExpensesPage() {
-  const [liveOpex, liveBank, liveLiabilities, financialYear, previousMonthRevenueResult] = await Promise.all([
+  const [liveOpex, liveBank, liveLiabilities, financialYear, previousMonthRevenueResult, trailingAverageRevenueResult] = await Promise.all([
     loadLiveOperatingExpenses(),
     loadLiveBankSummary(),
     loadRecurringLiabilities(),
     loadLiveFinancialYearSummary(),
     loadLivePreviousMonthRevenue(),
+    loadLiveTrailingAverageRevenue(12),
   ]);
   const isLive = liveOpex.source === "live";
 
@@ -89,6 +91,7 @@ export default async function ExpensesPage() {
   const actualMonthlyRevenue = isLive ? averageMonthlyRevenue(financialYear) : null;
   const revenueGap = actualMonthlyRevenue !== null ? actualMonthlyRevenue - revenueRequired : null;
   const previousMonthRevenue = isLive && previousMonthRevenueResult.source === "live" ? previousMonthRevenueResult.revenue : null;
+  const trailing12MonthRevenue = isLive && trailingAverageRevenueResult.source === "live" ? trailingAverageRevenueResult.average : null;
 
   const cashBalance = isLive && liveBank.source === "live" ? liveBank.totalBalance : currentCashBalance();
   // Cash runway needs the true monthly cash burn, not just P&L opex - loan
@@ -161,6 +164,12 @@ export default async function ExpensesPage() {
                 <span className="text-xs text-slate-400">Actual (this FY&rsquo;s run-rate)</span>
                 <span className="text-sm font-medium text-white tabular-nums">{formatAUD(actualMonthlyRevenue)}</span>
               </div>
+              {trailing12MonthRevenue !== null && (
+                <div className="flex items-baseline justify-between mt-1">
+                  <span className="text-xs text-slate-400">Actual (12-month average)</span>
+                  <span className="text-sm font-medium text-white tabular-nums">{formatAUD(trailing12MonthRevenue)}</span>
+                </div>
+              )}
               <div className={`flex items-baseline justify-between mt-1 ${revenueGap < 0 ? "text-red-400" : "text-emerald-400"}`}>
                 <span className="text-xs">{revenueGap < 0 ? "Shortfall" : "Surplus"}</span>
                 <span className="text-sm font-semibold tabular-nums">{formatAUD(Math.abs(revenueGap))}/month</span>

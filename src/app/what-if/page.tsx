@@ -5,21 +5,23 @@ import { loadLiveForecastData } from "@/lib/live-forecast";
 import { loadWhatIfScenarios } from "@/lib/what-if-source";
 import { settings, TODAY } from "@/lib/mock-data";
 import { isAnthropicConfigured } from "@/integrations/anthropic/client";
-import { averageMonthlyRevenue, liveRevenueRequiredToCoverOpex, loadLiveFinancialYearSummary } from "@/lib/xero-source";
+import { averageMonthlyRevenue, liveRevenueRequiredToCoverOpex, loadLiveFinancialYearSummary, loadLiveTrailingAverageRevenue } from "@/lib/xero-source";
 
 export const dynamic = "force-dynamic";
 
 export default async function WhatIfPage() {
-  const [liveForecast, scenariosResult, financialYear] = await Promise.all([
+  const [liveForecast, scenariosResult, financialYear, trailingAverageRevenueResult] = await Promise.all([
     loadLiveForecastData(),
     loadWhatIfScenarios(),
     loadLiveFinancialYearSummary(),
+    loadLiveTrailingAverageRevenue(12),
   ]);
   const forecastIsLive = liveForecast.source === "live" && liveForecast.data !== null;
 
   const todayBalance = forecastIsLive ? liveForecast.data!.currentCashBalance : 0;
   const monthlyDelta = financialYear.trailingCashTrendMonthlyDelta;
   const expectedMonthlyRevenue = averageMonthlyRevenue(financialYear);
+  const trailing12MonthRevenue = trailingAverageRevenueResult.source === "live" ? trailingAverageRevenueResult.average : null;
   const revenueRequiredToCoverOpex = forecastIsLive
     ? liveRevenueRequiredToCoverOpex(liveForecast.data!.operatingExpenses, settings.marginTargetPercent)
     : 0;
@@ -49,6 +51,7 @@ export default async function WhatIfPage() {
           initialScenarios={scenariosResult.scenarios}
           expectedMonthlyRevenue={expectedMonthlyRevenue}
           revenueRequiredToCoverOpex={revenueRequiredToCoverOpex}
+          trailing12MonthRevenue={trailing12MonthRevenue}
         />
       )}
     </div>

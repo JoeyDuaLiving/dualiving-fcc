@@ -2,7 +2,7 @@ import { callClaude, type ClaudeMessage, type ClaudeToolUseBlock } from "@/integ
 import { loadLiveForecastData } from "@/lib/live-forecast";
 import { formatAUD, formatAUDSigned, formatMonthAU } from "@/lib/format";
 import { settings, TODAY } from "@/lib/mock-data";
-import { averageMonthlyRevenue, liveAverageMonthlyOpex, loadLiveFinancialYearSummary } from "@/lib/xero-source";
+import { averageMonthlyRevenue, liveAverageMonthlyOpex, loadLiveFinancialYearSummary, loadLiveTrailingAverageRevenue } from "@/lib/xero-source";
 import { loadRecurringLiabilities, monthlyEquivalent } from "@/lib/recurring-liabilities-source";
 import { loadWhatIfScenarios, type WhatIfAdjustmentDTO } from "@/lib/what-if-source";
 import { firstMonthBelowBuffer, projectMonthlyBalance } from "@/lib/what-if-calculations";
@@ -59,11 +59,12 @@ export async function POST(request: Request) {
     return Response.json({ error: "message is required" }, { status: 400 });
   }
 
-  const [liveForecast, financialYear, liabilitiesResult, scenariosResult] = await Promise.all([
+  const [liveForecast, financialYear, liabilitiesResult, scenariosResult, trailingAverageRevenueResult] = await Promise.all([
     loadLiveForecastData(),
     loadLiveFinancialYearSummary(),
     loadRecurringLiabilities(),
     loadWhatIfScenarios(),
+    loadLiveTrailingAverageRevenue(12),
   ]);
 
   if (liveForecast.source !== "live" || !liveForecast.data) {
@@ -75,6 +76,7 @@ export async function POST(request: Request) {
   const delta = financialYear.trailingCashTrendMonthlyDelta;
 
   const avgMonthlyRevenue = averageMonthlyRevenue(financialYear);
+  const trailing12MonthRevenue = trailingAverageRevenueResult.source === "live" ? trailingAverageRevenueResult.average : null;
   const totalLiabilityMonthly = liabilitiesResult.source === "live" ? liabilitiesResult.liabilities.reduce((s, l) => s + monthlyEquivalent(l), 0) : 0;
 
   const existingScenario = body.scenarioId ? scenariosResult.scenarios.find((s) => s.id === body.scenarioId) : undefined;
@@ -86,6 +88,7 @@ export async function POST(request: Request) {
     `Minimum cash buffer (management assumption): ${formatAUD(settings.minimumCashBuffer)}.`,
     `Current net monthly cash trend (the business's actual trailing-3-month bank cash movement, from Xero's ledger - not a forecast): ${formatAUDSigned(delta)}/month.`,
     `Average monthly revenue (this financial year to date, from Xero's P&L): ${formatAUD(avgMonthlyRevenue)}.`,
+    ...(trailing12MonthRevenue !== null ? [`Average monthly revenue (trailing 12 months, a steadier longer-term reference): ${formatAUD(trailing12MonthRevenue)}.`] : []),
     `Average monthly operating expenses (Xero, live): ${formatAUD(opexLive)}.`,
     `Recurring loan/liability repayments not in Xero's P&L: ${formatAUD(totalLiabilityMonthly)}/month.`,
     existingAdjustments.length > 0

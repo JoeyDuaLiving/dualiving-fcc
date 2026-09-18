@@ -33,6 +33,7 @@ export function WhatIfClient({
   initialScenarios,
   expectedMonthlyRevenue,
   revenueRequiredToCoverOpex,
+  trailing12MonthRevenue,
 }: {
   todayBalance: number;
   monthlyDelta: number;
@@ -40,6 +41,7 @@ export function WhatIfClient({
   today: string;
   initialScenarios: WhatIfScenarioDTO[];
   expectedMonthlyRevenue: number;
+  trailing12MonthRevenue: number | null;
   revenueRequiredToCoverOpex: number;
 }) {
   const router = useRouter();
@@ -274,6 +276,13 @@ export function WhatIfClient({
           far (Xero P&amp;L, spread evenly across months elapsed) - the baseline trend above assumes revenue keeps
           landing at roughly this level every month. It doesn&rsquo;t vary month to month here; if a specific month is
           expected to come in above or below this, the actual trajectory will diverge from the flat baseline.
+          {trailing12MonthRevenue !== null && (
+            <>
+              {" "}
+              For reference, the trailing 12-month average is {formatAUD(trailing12MonthRevenue, { compact: true })}/month
+              - revenue is volatile month to month, so this run-rate and that longer average won&rsquo;t always agree.
+            </>
+          )}
         </p>
         {revenueRequiredToCoverOpex > 0 && (
           <div className={`mb-3 rounded-md border px-3 py-2 text-xs ${expectedMonthlyRevenue < revenueRequiredToCoverOpex ? "border-red-900/60 bg-red-950/30 text-red-300" : "border-emerald-900/60 bg-emerald-950/30 text-emerald-300"}`}>

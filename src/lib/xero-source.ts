@@ -166,34 +166,72 @@ export function averageMonthlyRevenue(financialYear: LiveFinancialYearSummary): 
   return financialYear.revenue / monthsElapsed;
 }
 
+/** Real Xero AR invoice revenue grouped by calendar month (issue date),
+ * AUTHORISED/PAID only so a stray DRAFT doesn't inflate a month - the
+ * shared basis for both the single-previous-month and trailing-N-month-
+ * average actual revenue figures below. */
+async function loadLiveRevenueByMonth(): Promise<Map<string, number> | null> {
+  const rows = await db
+    .select({ amount: invoicesTable.amount, issueDate: invoicesTable.issueDate, status: invoicesTable.status })
+    .from(invoicesTable)
+    .where(eq(invoicesTable.source, "xero"));
+  if (rows.length === 0) return null;
+
+  const byMonth = new Map<string, number>();
+  for (const r of rows) {
+    if (!r.issueDate || (r.status !== "AUTHORISED" && r.status !== "PAID")) continue;
+    const monthKey = opexMonthKey(toDateOnly(r.issueDate));
+    byMonth.set(monthKey, (byMonth.get(monthKey) ?? 0) + r.amount);
+  }
+  return byMonth;
+}
+
+function previousMonthKey(fromMonth: string, monthsBack: number): string {
+  const [y, m] = fromMonth.split("-").map(Number);
+  const d = new Date(Date.UTC(y, m - 1 - monthsBack, 1));
+  return `${d.getUTCFullYear()}-${String(d.getUTCMonth() + 1).padStart(2, "0")}`;
+}
+
 export interface LivePreviousMonthRevenueResult {
   revenue: number;
   source: "live" | "unavailable";
 }
 
 /** Real Xero AR invoice revenue for the previous full calendar month (not
- * the still-accumulating current one) - AUTHORISED/PAID only, so a stray
- * DRAFT doesn't inflate it. A concrete single-month actual to sit next to
- * the FYTD-average run-rate, which can mask a recent sharp drop or spike. */
+ * the still-accumulating current one) - a concrete single-month actual to
+ * sit next to the FYTD-average run-rate, which can mask a recent sharp
+ * drop or spike. */
 export async function loadLivePreviousMonthRevenue(): Promise<LivePreviousMonthRevenueResult> {
   try {
-    const rows = await db
-      .select({ amount: invoicesTable.amount, issueDate: invoicesTable.issueDate, status: invoicesTable.status })
-      .from(invoicesTable)
-      .where(eq(invoicesTable.source, "xero"));
-    if (rows.length === 0) return { revenue: 0, source: "unavailable" };
-
-    const currentMonth = opexMonthKey(TODAY);
-    const [y, m] = currentMonth.split("-").map(Number);
-    const prevDate = new Date(Date.UTC(y, m - 2, 1));
-    const previousMonth = `${prevDate.getUTCFullYear()}-${String(prevDate.getUTCMonth() + 1).padStart(2, "0")}`;
-
-    const revenue = rows
-      .filter((r) => r.issueDate && (r.status === "AUTHORISED" || r.status === "PAID") && opexMonthKey(toDateOnly(r.issueDate)) === previousMonth)
-      .reduce((s, r) => s + r.amount, 0);
-    return { revenue, source: "live" };
+    const byMonth = await loadLiveRevenueByMonth();
+    if (!byMonth) return { revenue: 0, source: "unavailable" };
+    const previousMonth = previousMonthKey(opexMonthKey(TODAY), 1);
+    return { revenue: byMonth.get(previousMonth) ?? 0, source: "live" };
   } catch {
     return { revenue: 0, source: "unavailable" };
+  }
+}
+
+export interface LiveTrailingAverageRevenueResult {
+  average: number;
+  monthsIncluded: number;
+  source: "live" | "unavailable";
+}
+
+/** Average real Xero AR invoice revenue over the trailing N full calendar
+ * months (excluding the still-accumulating current month) - a longer,
+ * steadier reference than the FYTD run-rate, which is only 1-12 months
+ * depending how far into the financial year today is. */
+export async function loadLiveTrailingAverageRevenue(monthsBack = 12): Promise<LiveTrailingAverageRevenueResult> {
+  try {
+    const byMonth = await loadLiveRevenueByMonth();
+    if (!byMonth) return { average: 0, monthsIncluded: 0, source: "unavailable" };
+    const currentMonth = opexMonthKey(TODAY);
+    const months = Array.from({ length: monthsBack }, (_, i) => previousMonthKey(currentMonth, i + 1));
+    const total = months.reduce((s, m) => s + (byMonth.get(m) ?? 0), 0);
+    return { average: total / monthsBack, monthsIncluded: monthsBack, source: "live" };
+  } catch {
+    return { average: 0, monthsIncluded: 0, source: "unavailable" };
   }
 }
 
