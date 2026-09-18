@@ -6,7 +6,7 @@ import { buildLiveForecastItems, loadLiveForecastData } from "@/lib/live-forecas
 import { loadWhatIfScenarios } from "@/lib/what-if-source";
 import { settings, TODAY } from "@/lib/mock-data";
 import { isAnthropicConfigured } from "@/integrations/anthropic/client";
-import { averageMonthlyRevenue, loadLiveFinancialYearSummary } from "@/lib/xero-source";
+import { averageMonthlyRevenue, liveRevenueRequiredToCoverOpex, loadLiveFinancialYearSummary } from "@/lib/xero-source";
 
 export const dynamic = "force-dynamic";
 
@@ -28,6 +28,9 @@ export default async function WhatIfPage() {
     day90Balance = summary.day90;
   }
   const expectedMonthlyRevenue = averageMonthlyRevenue(financialYear);
+  const revenueRequiredToCoverOpex = forecastIsLive
+    ? liveRevenueRequiredToCoverOpex(liveForecast.data!.operatingExpenses, settings.marginTargetPercent)
+    : 0;
 
   return (
     <div>
@@ -53,6 +56,7 @@ export default async function WhatIfPage() {
           today={TODAY}
           initialScenarios={scenariosResult.scenarios}
           expectedMonthlyRevenue={expectedMonthlyRevenue}
+          revenueRequiredToCoverOpex={revenueRequiredToCoverOpex}
         />
       )}
     </div>

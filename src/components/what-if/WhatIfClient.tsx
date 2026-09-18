@@ -32,6 +32,7 @@ export function WhatIfClient({
   today,
   initialScenarios,
   expectedMonthlyRevenue,
+  revenueRequiredToCoverOpex,
 }: {
   todayBalance: number;
   day90Balance: number;
@@ -39,6 +40,7 @@ export function WhatIfClient({
   today: string;
   initialScenarios: WhatIfScenarioDTO[];
   expectedMonthlyRevenue: number;
+  revenueRequiredToCoverOpex: number;
 }) {
   const router = useRouter();
   const [horizon, setHorizon] = useState<(typeof HORIZON_OPTIONS)[number]>(12);
@@ -274,6 +276,13 @@ export function WhatIfClient({
           landing at roughly this level every month. It doesn&rsquo;t vary month to month here; if a specific month is
           expected to come in above or below this, the actual trajectory will diverge from the flat baseline.
         </p>
+        {revenueRequiredToCoverOpex > 0 && (
+          <div className={`mb-3 rounded-md border px-3 py-2 text-xs ${expectedMonthlyRevenue < revenueRequiredToCoverOpex ? "border-red-900/60 bg-red-950/30 text-red-300" : "border-emerald-900/60 bg-emerald-950/30 text-emerald-300"}`}>
+            This run-rate is {formatAUD(Math.abs(expectedMonthlyRevenue - revenueRequiredToCoverOpex), { compact: true })}/month{" "}
+            {expectedMonthlyRevenue < revenueRequiredToCoverOpex ? "short of" : "above"} the {formatAUD(revenueRequiredToCoverOpex, { compact: true })}/month needed to cover OPEX at the management target margin (see Expenses) - the baseline trend above only holds up if that gap
+            {expectedMonthlyRevenue < revenueRequiredToCoverOpex ? " closes" : " is maintained"}.
+          </div>
+        )}
         <div className="overflow-x-auto">
           <div className="flex gap-2 min-w-max">
             {rows.slice(1).map((r) => (
