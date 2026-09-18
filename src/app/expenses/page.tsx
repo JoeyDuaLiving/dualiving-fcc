@@ -17,6 +17,7 @@ import {
 import { currentCashBalance } from "@/lib/calculations";
 import { settings } from "@/lib/mock-data";
 import {
+  averageMonthlyRevenue,
   liveAnnualisedOpex,
   liveAverageMonthlyOpex,
   liveCurrentMonthOpex,
@@ -25,6 +26,7 @@ import {
   liveOpexCategoryBreakdown,
   liveRevenueRequiredToCoverOpex,
   loadLiveBankSummary,
+  loadLiveFinancialYearSummary,
   loadLiveOperatingExpenses,
 } from "@/lib/xero-source";
 import { RecurringLiabilitiesManager } from "@/components/expenses/RecurringLiabilitiesManager";
@@ -42,7 +44,12 @@ const CATEGORY_LABEL: Record<string, string> = {
 };
 
 export default async function ExpensesPage() {
-  const [liveOpex, liveBank, liveLiabilities] = await Promise.all([loadLiveOperatingExpenses(), loadLiveBankSummary(), loadRecurringLiabilities()]);
+  const [liveOpex, liveBank, liveLiabilities, financialYear] = await Promise.all([
+    loadLiveOperatingExpenses(),
+    loadLiveBankSummary(),
+    loadRecurringLiabilities(),
+    loadLiveFinancialYearSummary(),
+  ]);
   const isLive = liveOpex.source === "live";
 
   const liabilityRangeEnd = addDays(TODAY, 365);
@@ -73,6 +80,12 @@ export default async function ExpensesPage() {
   // year's invoice history, not just outstanding invoices - not built yet.
   const marginPercent = isLive ? settings.marginTargetPercent : ytdFinancials().marginPercent || 25;
   const revenueRequired = isLive ? liveRevenueRequiredToCoverOpex(liveOpex.expenses, marginPercent) : revenueRequiredToCoverOpex(marginPercent);
+  // Actual revenue was never checked against this target anywhere on the
+  // page - it just showed the requirement in isolation. This is this
+  // financial year's real Xero revenue spread evenly across months
+  // elapsed, the same run-rate figure the What If page shows.
+  const actualMonthlyRevenue = isLive ? averageMonthlyRevenue(financialYear) : null;
+  const revenueGap = actualMonthlyRevenue !== null ? actualMonthlyRevenue - revenueRequired : null;
 
   const cashBalance = isLive && liveBank.source === "live" ? liveBank.totalBalance : currentCashBalance();
   // Cash runway needs the true monthly cash burn, not just P&L opex - loan
@@ -133,6 +146,18 @@ export default async function ExpensesPage() {
           <p className="text-xs text-slate-500 mt-2">
             Monthly revenue needed at the {isLive ? "management target" : "current"} {marginPercent.toFixed(1)}% margin to break even on overhead.
           </p>
+          {actualMonthlyRevenue !== null && revenueGap !== null && (
+            <div className="mt-3 pt-3 border-t border-slate-800">
+              <div className="flex items-baseline justify-between">
+                <span className="text-xs text-slate-400">Actual (this FY&rsquo;s run-rate)</span>
+                <span className="text-sm font-medium text-white tabular-nums">{formatAUD(actualMonthlyRevenue)}</span>
+              </div>
+              <div className={`flex items-baseline justify-between mt-1 ${revenueGap < 0 ? "text-red-400" : "text-emerald-400"}`}>
+                <span className="text-xs">{revenueGap < 0 ? "Shortfall" : "Surplus"}</span>
+                <span className="text-sm font-semibold tabular-nums">{formatAUD(Math.abs(revenueGap))}/month</span>
+              </div>
+            </div>
+          )}
         </Card>
       </div>
 
