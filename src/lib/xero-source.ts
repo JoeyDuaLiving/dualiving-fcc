@@ -149,6 +149,17 @@ export async function loadLiveFinancialYearSummary(): Promise<LiveFinancialYearS
   }
 }
 
+/** FYTD revenue spread evenly across the months elapsed so far this
+ * financial year - the same run-rate figure the What If chat uses to size
+ * a "10% revenue increase" in real dollars. */
+export function averageMonthlyRevenue(financialYear: LiveFinancialYearSummary): number {
+  if (financialYear.source !== "live") return 0;
+  const [fyYear, fyMonth] = financialYear.fyStartDate.split("-").map(Number);
+  const [tYear, tMonth] = TODAY.split("-").map(Number);
+  const monthsElapsed = Math.max(1, (tYear - fyYear) * 12 + (tMonth - fyMonth) + 1);
+  return financialYear.revenue / monthsElapsed;
+}
+
 export interface LiveBill {
   id: string;
   billNumber: string;

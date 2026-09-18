@@ -3,7 +3,7 @@ import { cashForecastSeries, summarizeForecast } from "@/lib/calculations";
 import { buildLiveForecastItems, loadLiveForecastData } from "@/lib/live-forecast";
 import { formatAUD, formatAUDSigned, formatMonthAU } from "@/lib/format";
 import { settings, TODAY } from "@/lib/mock-data";
-import { liveAverageMonthlyOpex, loadLiveFinancialYearSummary } from "@/lib/xero-source";
+import { averageMonthlyRevenue, liveAverageMonthlyOpex, loadLiveFinancialYearSummary } from "@/lib/xero-source";
 import { loadRecurringLiabilities, monthlyEquivalent } from "@/lib/recurring-liabilities-source";
 import { loadWhatIfScenarios, type WhatIfAdjustmentDTO } from "@/lib/what-if-source";
 import { baselineMonthlyDelta, firstMonthBelowBuffer, projectMonthlyBalance } from "@/lib/what-if-calculations";
@@ -77,10 +77,7 @@ export async function POST(request: Request) {
   const summary = summarizeForecast(daily, settings.minimumCashBuffer);
   const delta = baselineMonthlyDelta(summary.today, summary.day90);
 
-  const [fyYear, fyMonth] = financialYear.fyStartDate.split("-").map(Number);
-  const [tYear, tMonth] = TODAY.split("-").map(Number);
-  const monthsElapsedInFy = Math.max(1, (tYear - fyYear) * 12 + (tMonth - fyMonth) + 1);
-  const avgMonthlyRevenue = financialYear.source === "live" ? financialYear.revenue / monthsElapsedInFy : 0;
+  const avgMonthlyRevenue = averageMonthlyRevenue(financialYear);
   const totalLiabilityMonthly = liabilitiesResult.source === "live" ? liabilitiesResult.liabilities.reduce((s, l) => s + monthlyEquivalent(l), 0) : 0;
 
   const existingScenario = body.scenarioId ? scenariosResult.scenarios.find((s) => s.id === body.scenarioId) : undefined;

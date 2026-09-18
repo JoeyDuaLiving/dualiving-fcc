@@ -31,12 +31,14 @@ export function WhatIfClient({
   minimumCashBuffer,
   today,
   initialScenarios,
+  expectedMonthlyRevenue,
 }: {
   todayBalance: number;
   day90Balance: number;
   minimumCashBuffer: number;
   today: string;
   initialScenarios: WhatIfScenarioDTO[];
+  expectedMonthlyRevenue: number;
 }) {
   const router = useRouter();
   const [horizon, setHorizon] = useState<(typeof HORIZON_OPTIONS)[number]>(12);
@@ -234,6 +236,14 @@ export function WhatIfClient({
       </div>
 
       <Card className="mb-6">
+        <p className="text-xs text-amber-400/80 mb-3 flex items-start gap-1.5">
+          <span aria-hidden>⚠</span>
+          <span>
+            Flat trend projection - every line holds the current 90-day cash trend constant. It doesn&rsquo;t model
+            which specific months carry big job payments, wage cycles or other lumpy timing beyond the real 90-day
+            forecast.
+          </span>
+        </p>
         <WhatIfChart rows={rows} series={seriesMeta} buffer={minimumCashBuffer} />
       </Card>
 
@@ -256,6 +266,25 @@ export function WhatIfClient({
         recurring liabilities, weighted pipeline deposits), continued at today&rsquo;s trajectory. A scenario adds its
         own adjustments on top of that same trend from each adjustment&rsquo;s start date.
       </p>
+
+      <Card title="Expected revenue to keep this trend going" className="mb-6">
+        <p className="text-xs text-slate-500 mb-3">
+          {formatAUD(expectedMonthlyRevenue, { compact: true })}/month, this financial year&rsquo;s revenue run-rate so
+          far (Xero P&amp;L, spread evenly across months elapsed) - the baseline trend above assumes revenue keeps
+          landing at roughly this level every month. It doesn&rsquo;t vary month to month here; if a specific month is
+          expected to come in above or below this, the actual trajectory will diverge from the flat baseline.
+        </p>
+        <div className="overflow-x-auto">
+          <div className="flex gap-2 min-w-max">
+            {rows.slice(1).map((r) => (
+              <div key={r.monthKey as string} className="w-28 shrink-0 rounded-md border border-slate-800 bg-slate-900/60 px-3 py-2">
+                <div className="text-[11px] text-slate-500">{formatMonthAU(r.monthKey as string)}</div>
+                <div className="text-sm font-medium text-white tabular-nums mt-0.5">{formatAUD(expectedMonthlyRevenue, { compact: true })}</div>
+              </div>
+            ))}
+          </div>
+        </div>
+      </Card>
 
       <Card title="Add a scenario" className="mb-6">
         <div className="grid md:grid-cols-5 gap-2 items-end">
