@@ -1,0 +1,1 @@
+ALTER TABLE "financial_summary" ADD COLUMN "trailing_cash_trend_monthly_delta" double precision DEFAULT 0 NOT NULL;

@@ -121,6 +121,11 @@ export interface LiveFinancialYearSummary {
   revenue: number;
   grossProfit: number;
   netProfit: number;
+  // Real net bank cash movement over the trailing 3 months (Xero
+  // BankSummary closing - opening balance for that window, /3) - what the
+  // What If page's baseline trend is built from, not a forward-looking
+  // projection.
+  trailingCashTrendMonthlyDelta: number;
   asOf: string; // YYYY-MM-DD
   source: "live" | "unavailable";
 }
@@ -134,18 +139,19 @@ export async function loadLiveFinancialYearSummary(): Promise<LiveFinancialYearS
   try {
     const [row] = await db.select().from(financialSummary).where(eq(financialSummary.source, "xero"));
     if (!row) {
-      return { fyStartDate: TODAY, revenue: 0, grossProfit: 0, netProfit: 0, asOf: TODAY, source: "unavailable" };
+      return { fyStartDate: TODAY, revenue: 0, grossProfit: 0, netProfit: 0, trailingCashTrendMonthlyDelta: 0, asOf: TODAY, source: "unavailable" };
     }
     return {
       fyStartDate: toDateOnly(row.fyStartDate),
       revenue: row.revenueFyTd,
       grossProfit: row.grossProfitFyTd,
       netProfit: row.netProfitFyTd,
+      trailingCashTrendMonthlyDelta: row.trailingCashTrendMonthlyDelta,
       asOf: toDateOnly(row.asOf),
       source: "live",
     };
   } catch {
-    return { fyStartDate: TODAY, revenue: 0, grossProfit: 0, netProfit: 0, asOf: TODAY, source: "unavailable" };
+    return { fyStartDate: TODAY, revenue: 0, grossProfit: 0, netProfit: 0, trailingCashTrendMonthlyDelta: 0, asOf: TODAY, source: "unavailable" };
   }
 }
 

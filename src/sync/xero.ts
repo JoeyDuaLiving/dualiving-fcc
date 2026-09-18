@@ -196,6 +196,18 @@ export async function syncXero(): Promise<XeroSyncResult> {
       const now = new Date();
       const fyStart = await getFinancialYearStart(now);
       const pl = await getProfitAndLossSummary(fyStart.toISOString().slice(0, 10), now.toISOString().slice(0, 10));
+
+      // Trailing-3-month actual bank cash trend (real opening vs closing
+      // balance for that window, from Xero's own bank ledger) - what the
+      // What If page's baseline is built from, per business direction
+      // 2026-09-18: a real trailing average, not the previous forward-
+      // looking projection of committed/forecast items.
+      const trailingStart = new Date(Date.UTC(now.getUTCFullYear(), now.getUTCMonth() - 3, now.getUTCDate()));
+      const trailingBalances = await getBankSummary(trailingStart.toISOString().slice(0, 10), now.toISOString().slice(0, 10));
+      const trailingOpening = trailingBalances.reduce((s, b) => s + b.openingBalance, 0);
+      const trailingClosing = trailingBalances.reduce((s, b) => s + b.closingBalance, 0);
+      const trailingCashTrendMonthlyDelta = (trailingClosing - trailingOpening) / 3;
+
       const [result] = await db
         .insert(financialSummary)
         .values({
@@ -205,6 +217,7 @@ export async function syncXero(): Promise<XeroSyncResult> {
           revenueFyTd: pl.revenue,
           grossProfitFyTd: pl.grossProfit,
           netProfitFyTd: pl.netProfit,
+          trailingCashTrendMonthlyDelta,
           asOf: now,
         })
         .onConflictDoUpdate({
@@ -214,6 +227,7 @@ export async function syncXero(): Promise<XeroSyncResult> {
             revenueFyTd: sql`excluded.revenue_fy_td`,
             grossProfitFyTd: sql`excluded.gross_profit_fy_td`,
             netProfitFyTd: sql`excluded.net_profit_fy_td`,
+            trailingCashTrendMonthlyDelta: sql`excluded.trailing_cash_trend_monthly_delta`,
             asOf: sql`excluded.as_of`,
             updatedAt: new Date(),
           },

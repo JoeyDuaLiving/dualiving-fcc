@@ -1,12 +1,11 @@
 import { callClaude, type ClaudeMessage, type ClaudeToolUseBlock } from "@/integrations/anthropic/client";
-import { cashForecastSeries, summarizeForecast } from "@/lib/calculations";
-import { buildLiveForecastItems, loadLiveForecastData } from "@/lib/live-forecast";
+import { loadLiveForecastData } from "@/lib/live-forecast";
 import { formatAUD, formatAUDSigned, formatMonthAU } from "@/lib/format";
 import { settings, TODAY } from "@/lib/mock-data";
 import { averageMonthlyRevenue, liveAverageMonthlyOpex, loadLiveFinancialYearSummary } from "@/lib/xero-source";
 import { loadRecurringLiabilities, monthlyEquivalent } from "@/lib/recurring-liabilities-source";
 import { loadWhatIfScenarios, type WhatIfAdjustmentDTO } from "@/lib/what-if-source";
-import { baselineMonthlyDelta, firstMonthBelowBuffer, projectMonthlyBalance } from "@/lib/what-if-calculations";
+import { firstMonthBelowBuffer, projectMonthlyBalance } from "@/lib/what-if-calculations";
 
 // ---------------------------------------------------------------------------
 // Turns a free-text "what if" question into a conversational reply, backed
@@ -72,10 +71,8 @@ export async function POST(request: Request) {
   }
 
   const opexLive = liveAverageMonthlyOpex(liveForecast.data.operatingExpenses);
-  const items = buildLiveForecastItems(liveForecast.data);
-  const daily = cashForecastSeries(items, 90, liveForecast.data.currentCashBalance);
-  const summary = summarizeForecast(daily, settings.minimumCashBuffer);
-  const delta = baselineMonthlyDelta(summary.today, summary.day90);
+  const todayBalance = liveForecast.data.currentCashBalance;
+  const delta = financialYear.trailingCashTrendMonthlyDelta;
 
   const avgMonthlyRevenue = averageMonthlyRevenue(financialYear);
   const totalLiabilityMonthly = liabilitiesResult.source === "live" ? liabilitiesResult.liabilities.reduce((s, l) => s + monthlyEquivalent(l), 0) : 0;
@@ -85,9 +82,9 @@ export async function POST(request: Request) {
 
   const contextLines = [
     `Today's date: ${TODAY}.`,
-    `Current cash balance: ${formatAUD(summary.today)}.`,
+    `Current cash balance: ${formatAUD(todayBalance)}.`,
     `Minimum cash buffer (management assumption): ${formatAUD(settings.minimumCashBuffer)}.`,
-    `Current net monthly cash trend (from the live 90-day forecast, all real committed/forecast items already included): ${formatAUDSigned(delta)}/month.`,
+    `Current net monthly cash trend (the business's actual trailing-3-month bank cash movement, from Xero's ledger - not a forecast): ${formatAUDSigned(delta)}/month.`,
     `Average monthly revenue (this financial year to date, from Xero's P&L): ${formatAUD(avgMonthlyRevenue)}.`,
     `Average monthly operating expenses (Xero, live): ${formatAUD(opexLive)}.`,
     `Recurring loan/liability repayments not in Xero's P&L: ${formatAUD(totalLiabilityMonthly)}/month.`,
@@ -129,8 +126,8 @@ export async function POST(request: Request) {
   };
 
   const horizon = 12;
-  const withoutNew = projectMonthlyBalance(summary.today, delta, existingAdjustments, horizon, TODAY);
-  const withNew = projectMonthlyBalance(summary.today, delta, [...existingAdjustments, proposedDto], horizon, TODAY);
+  const withoutNew = projectMonthlyBalance(todayBalance, delta, existingAdjustments, horizon, TODAY);
+  const withNew = projectMonthlyBalance(todayBalance, delta, [...existingAdjustments, proposedDto], horizon, TODAY);
   const breach = firstMonthBelowBuffer(withNew, settings.minimumCashBuffer);
   const breachWithout = firstMonthBelowBuffer(withoutNew, settings.minimumCashBuffer);
 

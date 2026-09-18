@@ -6,7 +6,7 @@ import { Card } from "@/components/shared/Card";
 import { StatCard } from "@/components/shared/StatCard";
 import { WhatIfChart, type WhatIfSeriesMeta } from "@/components/charts/WhatIfChart";
 import { formatAUD, formatAUDSigned, formatDateAU, formatMonthAU } from "@/lib/format";
-import { baselineMonthlyDelta, firstMonthBelowBuffer, projectMonthlyBalance } from "@/lib/what-if-calculations";
+import { firstMonthBelowBuffer, projectMonthlyBalance } from "@/lib/what-if-calculations";
 import type { WhatIfAdjustmentCategory, WhatIfAdjustmentDTO, WhatIfScenarioDTO } from "@/lib/what-if-source";
 
 const SCENARIO_COLORS = ["#607161", "#f59e0b", "#38bdf8", "#fb7185", "#a78bfa", "#34d399"];
@@ -27,7 +27,7 @@ function emptyAdjustment(startFrom: string): NewAdjustmentState {
 
 export function WhatIfClient({
   todayBalance,
-  day90Balance,
+  monthlyDelta,
   minimumCashBuffer,
   today,
   initialScenarios,
@@ -35,7 +35,7 @@ export function WhatIfClient({
   revenueRequiredToCoverOpex,
 }: {
   todayBalance: number;
-  day90Balance: number;
+  monthlyDelta: number;
   minimumCashBuffer: number;
   today: string;
   initialScenarios: WhatIfScenarioDTO[];
@@ -69,7 +69,7 @@ export function WhatIfClient({
   const [savingAdjustment, setSavingAdjustment] = useState<string | null>(null);
   const [error, setError] = useState<string | null>(null);
 
-  const delta = baselineMonthlyDelta(todayBalance, day90Balance);
+  const delta = monthlyDelta;
 
   const activeScenarios = initialScenarios.filter((s) => selectedIds.has(s.id));
 
@@ -241,9 +241,9 @@ export function WhatIfClient({
         <p className="text-xs text-amber-400/80 mb-3 flex items-start gap-1.5">
           <span aria-hidden>⚠</span>
           <span>
-            Flat trend projection - every line holds the current 90-day cash trend constant. It doesn&rsquo;t model
-            which specific months carry big job payments, wage cycles or other lumpy timing beyond the real 90-day
-            forecast.
+            Flat trend projection - every line holds the actual trailing-3-month cash trend constant. It doesn&rsquo;t
+            model which specific future months carry big job payments, wage cycles or other lumpy timing, and it
+            won&rsquo;t reflect a recent shift until it&rsquo;s been happening for a few months.
           </span>
         </p>
         <WhatIfChart rows={rows} series={seriesMeta} buffer={minimumCashBuffer} />
@@ -262,11 +262,10 @@ export function WhatIfClient({
       </div>
 
       <p className="text-xs text-slate-500 mb-6">
-        Baseline is the business&rsquo;s own current net monthly cash trend ({formatAUDSigned(delta)}/month) taken from
-        the live 90-day cash forecast (day 90 balance vs today, spread over 3 months) and held flat forward - every
-        real committed and forecast item the 90-day forecast already knows about (invoices, bills, job costs, opex,
-        recurring liabilities, weighted pipeline deposits), continued at today&rsquo;s trajectory. A scenario adds its
-        own adjustments on top of that same trend from each adjustment&rsquo;s start date.
+        Baseline is the business&rsquo;s own actual net monthly cash trend ({formatAUDSigned(delta)}/month) - Xero&rsquo;s
+        bank ledger closing balance vs opening balance over the trailing 3 months, divided by 3 - held flat forward.
+        This is real historical cash movement, not a forward-looking projection of invoices/bills/job costs still to
+        come. A scenario adds its own adjustments on top of that same trend from each adjustment&rsquo;s start date.
       </p>
 
       <Card title="Expected revenue to keep this trend going" className="mb-6">

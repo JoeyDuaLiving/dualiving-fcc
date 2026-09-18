@@ -1,8 +1,7 @@
 import { PageHeader } from "@/components/shared/PageHeader";
 import { WhatIfClient } from "@/components/what-if/WhatIfClient";
 import { WhatIfChatPanel } from "@/components/what-if/WhatIfChatPanel";
-import { cashForecastSeries, summarizeForecast } from "@/lib/calculations";
-import { buildLiveForecastItems, loadLiveForecastData } from "@/lib/live-forecast";
+import { loadLiveForecastData } from "@/lib/live-forecast";
 import { loadWhatIfScenarios } from "@/lib/what-if-source";
 import { settings, TODAY } from "@/lib/mock-data";
 import { isAnthropicConfigured } from "@/integrations/anthropic/client";
@@ -18,15 +17,8 @@ export default async function WhatIfPage() {
   ]);
   const forecastIsLive = liveForecast.source === "live" && liveForecast.data !== null;
 
-  let todayBalance = 0;
-  let day90Balance = 0;
-  if (forecastIsLive) {
-    const items = buildLiveForecastItems(liveForecast.data!);
-    const daily = cashForecastSeries(items, 90, liveForecast.data!.currentCashBalance);
-    const summary = summarizeForecast(daily, settings.minimumCashBuffer);
-    todayBalance = summary.today;
-    day90Balance = summary.day90;
-  }
+  const todayBalance = forecastIsLive ? liveForecast.data!.currentCashBalance : 0;
+  const monthlyDelta = financialYear.trailingCashTrendMonthlyDelta;
   const expectedMonthlyRevenue = averageMonthlyRevenue(financialYear);
   const revenueRequiredToCoverOpex = forecastIsLive
     ? liveRevenueRequiredToCoverOpex(liveForecast.data!.operatingExpenses, settings.marginTargetPercent)
@@ -51,7 +43,7 @@ export default async function WhatIfPage() {
       {forecastIsLive && (
         <WhatIfClient
           todayBalance={todayBalance}
-          day90Balance={day90Balance}
+          monthlyDelta={monthlyDelta}
           minimumCashBuffer={settings.minimumCashBuffer}
           today={TODAY}
           initialScenarios={scenariosResult.scenarios}

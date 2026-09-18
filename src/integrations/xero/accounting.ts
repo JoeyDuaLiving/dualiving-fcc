@@ -44,9 +44,19 @@ export interface BankAccountBalance {
 /** Xero's report format is a Header row (column names) + Section rows of
  * per-account Rows whose Cells line up positionally - there's no keyed JSON
  * for this, so this parses cell position by the confirmed column order:
- * [Name, Opening, Received, Spent, Closing]. */
-export async function getBankSummary(): Promise<BankAccountBalance[]> {
-  const result = await xeroGet<XeroReportResponse>("/Reports/BankSummary");
+ * [Name, Opening, Received, Spent, Closing].
+ *
+ * With no dates, Xero defaults to month-to-date (confirmed live 2026-09-13:
+ * omitting both params and passing only toDate=today produced identical
+ * results, and the explicit-toDate report's own title read "From 1
+ * September..." - i.e. it silently defaulted fromDate to the 1st of the
+ * current month). Pass an explicit fromDate for any other window, e.g. a
+ * trailing-N-month actual cash trend. */
+export async function getBankSummary(fromDate?: string, toDate?: string): Promise<BankAccountBalance[]> {
+  const query: Record<string, string> = {};
+  if (fromDate) query.fromDate = fromDate;
+  if (toDate) query.toDate = toDate;
+  const result = await xeroGet<XeroReportResponse>("/Reports/BankSummary", query);
   const report = result.Reports[0];
   const balances: BankAccountBalance[] = [];
 

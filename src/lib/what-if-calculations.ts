@@ -2,29 +2,26 @@ import type { WhatIfAdjustmentDTO } from "./what-if-source";
 
 // ---------------------------------------------------------------------------
 // Long-term (month-by-month, not day-by-day) cash projection for the What
-// If page. The daily 90-day forecast engine (calculations.ts /
-// live-forecast.ts) already models every real committed/forecast item it
-// knows about, but that granular item list only reaches ~90 days out -
-// projecting a year of individual line items would mostly be inventing
-// data. Instead, this takes the business's own current net monthly cash
-// trend from that same 90-day forecast (day 90 balance vs today, spread
-// over 3 months) and holds it flat forward - an explicit, stated
-// assumption ("the current trajectory continues"), which is exactly what a
-// what-if scenario is meant to test changes against.
+// If page. Projecting a year of individual real line items the way the
+// daily 90-day forecast does would mostly be inventing data past ~90 days
+// out, so this instead holds a single monthly delta flat forward - an
+// explicit, stated assumption ("the current trend continues"), which is
+// exactly what a what-if scenario is meant to test changes against.
+//
+// That delta is the business's own actual trailing-3-month bank cash
+// movement (Xero BankSummary closing vs opening balance for that window,
+// synced in src/sync/xero.ts and read via loadLiveFinancialYearSummary's
+// trailingCashTrendMonthlyDelta) - a real historical average, not a
+// forward-looking projection of committed/forecast items (that was this
+// module's original approach; changed per business direction 2026-09-18,
+// since a forecast-based figure conflated "what's coming" with "what's
+// actually been happening").
 // ---------------------------------------------------------------------------
 
 export interface MonthlyProjectionPoint {
   monthIndex: number; // 0 = current month
   monthKey: string; // YYYY-MM
   balance: number;
-}
-
-/** (day90 - today) / 3 from the live 90-day forecast - the business's own
- * current net monthly cash trend (revenue collections and job costs and
- * opex and recurring liabilities, all already modelled), not a separate
- * guess. */
-export function baselineMonthlyDelta(todayBalance: number, day90Balance: number): number {
-  return (day90Balance - todayBalance) / 3;
 }
 
 function monthKeyAt(startFrom: string, monthsAhead: number): string {

@@ -409,6 +409,12 @@ export const financialSummary = pgTable(
     revenueFyTd: doublePrecision("revenue_fy_td").notNull(),
     grossProfitFyTd: doublePrecision("gross_profit_fy_td").notNull(),
     netProfitFyTd: doublePrecision("net_profit_fy_td").notNull(),
+    // Actual net bank cash movement over the trailing 3 months (Xero
+    // BankSummary closing - opening balance for that window, /3) - what
+    // the What If page's baseline trend is built from. A real trailing
+    // average, not a forward-looking projection of committed/forecast
+    // items (see what-if-calculations.ts).
+    trailingCashTrendMonthlyDelta: doublePrecision("trailing_cash_trend_monthly_delta").notNull().default(0),
     asOf: timestamp("as_of").notNull(),
     updatedAt: timestamp("updated_at").notNull().defaultNow(),
   },
