@@ -28,6 +28,7 @@ import {
   loadLiveBankSummary,
   loadLiveFinancialYearSummary,
   loadLiveOperatingExpenses,
+  loadLivePreviousMonthRevenue,
 } from "@/lib/xero-source";
 import { RecurringLiabilitiesManager } from "@/components/expenses/RecurringLiabilitiesManager";
 import { loadRecurringLiabilities, monthlyEquivalent, projectLiabilityOccurrences } from "@/lib/recurring-liabilities-source";
@@ -44,11 +45,12 @@ const CATEGORY_LABEL: Record<string, string> = {
 };
 
 export default async function ExpensesPage() {
-  const [liveOpex, liveBank, liveLiabilities, financialYear] = await Promise.all([
+  const [liveOpex, liveBank, liveLiabilities, financialYear, previousMonthRevenueResult] = await Promise.all([
     loadLiveOperatingExpenses(),
     loadLiveBankSummary(),
     loadRecurringLiabilities(),
     loadLiveFinancialYearSummary(),
+    loadLivePreviousMonthRevenue(),
   ]);
   const isLive = liveOpex.source === "live";
 
@@ -86,6 +88,7 @@ export default async function ExpensesPage() {
   // elapsed, the same run-rate figure the What If page shows.
   const actualMonthlyRevenue = isLive ? averageMonthlyRevenue(financialYear) : null;
   const revenueGap = actualMonthlyRevenue !== null ? actualMonthlyRevenue - revenueRequired : null;
+  const previousMonthRevenue = isLive && previousMonthRevenueResult.source === "live" ? previousMonthRevenueResult.revenue : null;
 
   const cashBalance = isLive && liveBank.source === "live" ? liveBank.totalBalance : currentCashBalance();
   // Cash runway needs the true monthly cash burn, not just P&L opex - loan
@@ -148,7 +151,13 @@ export default async function ExpensesPage() {
           </p>
           {actualMonthlyRevenue !== null && revenueGap !== null && (
             <div className="mt-3 pt-3 border-t border-slate-800">
-              <div className="flex items-baseline justify-between">
+              {previousMonthRevenue !== null && (
+                <div className="flex items-baseline justify-between">
+                  <span className="text-xs text-slate-400">Actual (previous month)</span>
+                  <span className="text-sm font-medium text-white tabular-nums">{formatAUD(previousMonthRevenue)}</span>
+                </div>
+              )}
+              <div className="flex items-baseline justify-between mt-1">
                 <span className="text-xs text-slate-400">Actual (this FY&rsquo;s run-rate)</span>
                 <span className="text-sm font-medium text-white tabular-nums">{formatAUD(actualMonthlyRevenue)}</span>
               </div>

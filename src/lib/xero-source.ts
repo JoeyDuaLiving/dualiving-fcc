@@ -160,6 +160,37 @@ export function averageMonthlyRevenue(financialYear: LiveFinancialYearSummary): 
   return financialYear.revenue / monthsElapsed;
 }
 
+export interface LivePreviousMonthRevenueResult {
+  revenue: number;
+  source: "live" | "unavailable";
+}
+
+/** Real Xero AR invoice revenue for the previous full calendar month (not
+ * the still-accumulating current one) - AUTHORISED/PAID only, so a stray
+ * DRAFT doesn't inflate it. A concrete single-month actual to sit next to
+ * the FYTD-average run-rate, which can mask a recent sharp drop or spike. */
+export async function loadLivePreviousMonthRevenue(): Promise<LivePreviousMonthRevenueResult> {
+  try {
+    const rows = await db
+      .select({ amount: invoicesTable.amount, issueDate: invoicesTable.issueDate, status: invoicesTable.status })
+      .from(invoicesTable)
+      .where(eq(invoicesTable.source, "xero"));
+    if (rows.length === 0) return { revenue: 0, source: "unavailable" };
+
+    const currentMonth = opexMonthKey(TODAY);
+    const [y, m] = currentMonth.split("-").map(Number);
+    const prevDate = new Date(Date.UTC(y, m - 2, 1));
+    const previousMonth = `${prevDate.getUTCFullYear()}-${String(prevDate.getUTCMonth() + 1).padStart(2, "0")}`;
+
+    const revenue = rows
+      .filter((r) => r.issueDate && (r.status === "AUTHORISED" || r.status === "PAID") && opexMonthKey(toDateOnly(r.issueDate)) === previousMonth)
+      .reduce((s, r) => s + r.amount, 0);
+    return { revenue, source: "live" };
+  } catch {
+    return { revenue: 0, source: "unavailable" };
+  }
+}
+
 export interface LiveBill {
   id: string;
   billNumber: string;
