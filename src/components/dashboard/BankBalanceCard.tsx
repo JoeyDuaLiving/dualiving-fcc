@@ -24,6 +24,13 @@ export function BankBalanceCard({
 
   const displayValue = isSet ? balance : fallbackBalance;
 
+  function startEditing() {
+    setAmount(String(displayValue));
+    setDate(new Date().toISOString().slice(0, 10));
+    setError(null);
+    setEditing(true);
+  }
+
   async function save() {
     if (!amount || !date) {
       setError("Balance and date are required.");
@@ -49,25 +56,31 @@ export function BankBalanceCard({
 
   if (editing) {
     return (
-      <div className="rounded-lg border border-slate-800 bg-slate-900/60 p-4 h-full">
+      <div className="col-span-2 rounded-lg border border-brand-500/60 bg-slate-900 p-4 h-full">
         <div className="text-xs font-medium text-slate-400">Current bank balance</div>
-        <div className="mt-2 flex gap-1.5">
-          <input
-            type="number"
-            value={amount}
-            onChange={(e) => setAmount(e.target.value)}
-            className="w-full min-w-0 bg-slate-800 border border-slate-700 rounded-md px-2 py-1 text-sm text-slate-200"
-            autoFocus
-          />
-          <input
-            type="date"
-            value={date}
-            onChange={(e) => setDate(e.target.value)}
-            className="bg-slate-800 border border-slate-700 rounded-md px-1.5 py-1 text-xs text-slate-200"
-          />
+        <div className="mt-2 grid grid-cols-2 gap-3">
+          <div>
+            <label className="text-[11px] text-slate-500 block mb-1">Balance ($)</label>
+            <input
+              type="number"
+              value={amount}
+              onChange={(e) => setAmount(e.target.value)}
+              className="w-full bg-slate-800 border border-slate-700 rounded-md px-3 py-2 text-lg text-slate-100 tabular-nums"
+              autoFocus
+            />
+          </div>
+          <div>
+            <label className="text-[11px] text-slate-500 block mb-1">As of</label>
+            <input
+              type="date"
+              value={date}
+              onChange={(e) => setDate(e.target.value)}
+              className="w-full bg-slate-800 border border-slate-700 rounded-md px-3 py-2 text-sm text-slate-200"
+            />
+          </div>
         </div>
-        <div className="mt-2 flex gap-2">
-          <button onClick={save} disabled={saving} className="text-xs bg-brand-500 hover:bg-brand-400 disabled:opacity-50 text-white rounded-md px-2 py-1">
+        <div className="mt-3 flex gap-2">
+          <button onClick={save} disabled={saving} className="text-xs bg-brand-500 hover:bg-brand-400 disabled:opacity-50 text-white rounded-md px-3 py-1.5">
             {saving ? "Saving..." : "Save"}
           </button>
           <button onClick={() => setEditing(false)} className="text-xs text-slate-400 hover:text-slate-200">
@@ -83,7 +96,7 @@ export function BankBalanceCard({
     <div className="rounded-lg border border-slate-800 bg-slate-900/60 p-4 h-full transition-colors hover:border-slate-700 hover:bg-slate-900">
       <div className="flex items-center justify-between">
         <div className="text-xs font-medium text-slate-400">Current bank balance</div>
-        <button onClick={() => setEditing(true)} className="text-[11px] text-brand-400 hover:text-brand-300">
+        <button onClick={startEditing} className="text-[11px] text-brand-400 hover:text-brand-300">
           Update
         </button>
       </div>
