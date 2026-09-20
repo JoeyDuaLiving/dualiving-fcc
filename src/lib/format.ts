@@ -9,6 +9,28 @@ function parseISODateUTC(iso: string): Date {
   return new Date(Date.UTC(y, m - 1, d));
 }
 
+// Queensland (this business's home state, per its Xero org address in
+// Burleigh Heads) never observes daylight saving, so AEST is a fixed
+// UTC+10 offset year-round - no timezone library needed, just this.
+const AEST_OFFSET_MS = 10 * 60 * 60 * 1000;
+
+/** A Date whose UTC getters/`.toISOString()` reflect the current wall-clock
+ * date and time in Australian Eastern Standard Time, not the server's own
+ * timezone. Confirmed live 2026-09-20: `new Date()` on Vercel (which
+ * defaults its serverless functions to UTC, and this project sets no TZ
+ * env var) is a full calendar day behind AEST for ~10 hours every day
+ * (from AEST midnight until UTC catches up at 10am AEST) - every place
+ * that means "today"/"now" for the business (TODAY in mock-data.ts, the
+ * sync's date-range calculations) must go through this, never `new
+ * Date()` directly, or it silently uses yesterday's date for part of
+ * every day. Always read this Date back with UTC getters (getUTCFullYear
+ * etc.) or .toISOString() - its own local getters are meaningless (they'd
+ * reflect the shifted epoch through whatever zone the server itself is
+ * in, double-shifting on a non-UTC server). */
+export function nowInAEST(): Date {
+  return new Date(Date.now() + AEST_OFFSET_MS);
+}
+
 export function formatAUD(amount: number, opts: { compact?: boolean } = {}): string {
   if (opts.compact) {
     const abs = Math.abs(amount);

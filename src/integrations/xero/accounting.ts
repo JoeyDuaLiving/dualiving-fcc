@@ -1,5 +1,6 @@
 import "server-only";
 import { xeroGet } from "./client";
+import { nowInAEST } from "@/lib/format";
 import type {
   XeroAccount,
   XeroAccountsResponse,
@@ -118,9 +119,9 @@ export async function getOutstandingBills(): Promise<XeroInvoice[]> {
  * near-empty "month" at the start of the window (e.g. only the last 3 days
  * of a month) that understates any monthly average computed over it. */
 export async function getBillsForOpex(monthsBack = 14): Promise<XeroInvoice[]> {
-  const now = new Date();
-  const since = new Date(now.getFullYear(), now.getMonth() - monthsBack, 1);
-  const where = `Type=="ACCPAY" AND Status!="VOIDED" AND Status!="DELETED" AND Date >= DateTime(${since.getFullYear()},${since.getMonth() + 1},${since.getDate()})`;
+  const now = nowInAEST();
+  const since = new Date(Date.UTC(now.getUTCFullYear(), now.getUTCMonth() - monthsBack, 1));
+  const where = `Type=="ACCPAY" AND Status!="VOIDED" AND Status!="DELETED" AND Date >= DateTime(${since.getUTCFullYear()},${since.getUTCMonth() + 1},${since.getUTCDate()})`;
   return paginateInvoices(where);
 }
 
@@ -141,8 +142,8 @@ export async function getContacts(): Promise<XeroContact[]> {
 /** Recent bank transactions only (not the full ~3,600-record history) -
  * scoped to what's useful for cash-flow context, not a full ledger export. */
 export async function getRecentBankTransactions(sinceDaysAgo = 90, maxPages = 20): Promise<XeroBankTransaction[]> {
-  const since = new Date(Date.now() - sinceDaysAgo * 86_400_000);
-  const where = `Date >= DateTime(${since.getFullYear()},${since.getMonth() + 1},${since.getDate()})`;
+  const since = new Date(nowInAEST().getTime() - sinceDaysAgo * 86_400_000);
+  const where = `Date >= DateTime(${since.getUTCFullYear()},${since.getUTCMonth() + 1},${since.getUTCDate()})`;
   const all: XeroBankTransaction[] = [];
   for (let page = 1; page <= maxPages; page++) {
     const result = await xeroGet<XeroBankTransactionsResponse>("/BankTransactions", { where, order: "Date DESC", page: String(page) });
@@ -181,9 +182,9 @@ export async function getExpenseAccounts(): Promise<XeroAccount[]> {
  * YTD + a monthly-average opex projection without pulling the full ledger.
  * Cutoff aligned to a calendar-month boundary - see getBillsForOpex. */
 export async function getSpendTransactions(monthsBack = 14, maxPages = 50): Promise<XeroBankTransaction[]> {
-  const now = new Date();
-  const since = new Date(now.getFullYear(), now.getMonth() - monthsBack, 1);
-  const where = `Type=="SPEND" AND Status=="AUTHORISED" AND Date >= DateTime(${since.getFullYear()},${since.getMonth() + 1},${since.getDate()})`;
+  const now = nowInAEST();
+  const since = new Date(Date.UTC(now.getUTCFullYear(), now.getUTCMonth() - monthsBack, 1));
+  const where = `Type=="SPEND" AND Status=="AUTHORISED" AND Date >= DateTime(${since.getUTCFullYear()},${since.getUTCMonth() + 1},${since.getUTCDate()})`;
   const all: XeroBankTransaction[] = [];
   for (let page = 1; page <= maxPages; page++) {
     const result = await xeroGet<XeroBankTransactionsResponse>("/BankTransactions", { where, order: "Date DESC", page: String(page) });

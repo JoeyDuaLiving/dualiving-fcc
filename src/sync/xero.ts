@@ -16,6 +16,7 @@ import {
 } from "@/integrations/xero/accounting";
 import { parseXeroDate } from "@/integrations/xero/mappers";
 import { classifyOpexCategory } from "@/lib/opex-classification";
+import { nowInAEST } from "@/lib/format";
 import type { XeroAccount, XeroBankTransaction, XeroContact, XeroInvoice } from "@/integrations/xero/types";
 
 // ---------------------------------------------------------------------------
@@ -193,7 +194,7 @@ export async function syncXero(): Promise<XeroSyncResult> {
     // --- Financial year P&L summary (real Xero Revenue/Gross Profit/Net
     // Profit for the year to date, not our own margin assumption) ----------
     try {
-      const now = new Date();
+      const now = nowInAEST();
       const fyStart = await getFinancialYearStart(now);
       const pl = await getProfitAndLossSummary(fyStart.toISOString().slice(0, 10), now.toISOString().slice(0, 10));
 
@@ -530,10 +531,10 @@ async function upsertOperatingExpenses(expenseAccounts: XeroAccount[], spendTxns
   // A category counts as recurring if it shows spend in at least 2 of the
   // trailing 3 calendar months - a real, data-driven signal for which
   // categories are worth projecting forward, not a guess.
-  const now = new Date();
+  const now = nowInAEST();
   const recentMonths = new Set<string>();
   for (let i = 0; i < 3; i++) {
-    recentMonths.add(new Date(now.getFullYear(), now.getMonth() - i, 1).toISOString().slice(0, 7));
+    recentMonths.add(new Date(Date.UTC(now.getUTCFullYear(), now.getUTCMonth() - i, 1)).toISOString().slice(0, 7));
   }
   const recurringCategories = new Set(
     [...monthsByCategory.entries()]

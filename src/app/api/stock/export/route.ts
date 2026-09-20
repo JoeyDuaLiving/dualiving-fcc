@@ -1,4 +1,5 @@
 import { loadStockPosition } from "@/lib/stock-source";
+import { nowInAEST } from "@/lib/format";
 
 function csvField(value: string | number): string {
   const s = String(value);
@@ -15,7 +16,7 @@ export async function GET() {
   return new Response(csv, {
     headers: {
       "Content-Type": "text/csv; charset=utf-8",
-      "Content-Disposition": `attachment; filename="stock-drawdowns-${new Date().toISOString().slice(0, 10)}.csv"`,
+      "Content-Disposition": `attachment; filename="stock-drawdowns-${nowInAEST().toISOString().slice(0, 10)}.csv"`,
     },
   });
 }
