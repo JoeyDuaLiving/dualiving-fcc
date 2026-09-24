@@ -125,7 +125,7 @@ export function ForecastClient({
         <div className="mt-4 text-xs text-slate-500 grid md:grid-cols-3 gap-2">
           <p><span className="text-slate-400 font-medium">Conservative:</span> {SCENARIOS.conservative.customerPaymentDelayDays}-day payment delays, {SCENARIOS.conservative.jobCostVariancePercent}% cost contingency, pipeline excluded.</p>
           <p><span className="text-slate-400 font-medium">Base:</span> payments on schedule, costs as forecast, pipeline excluded.</p>
-          <p><span className="text-slate-400 font-medium">Optimistic:</span> payments {Math.abs(SCENARIOS.optimistic.customerPaymentDelayDays)} days early, costs {Math.abs(SCENARIOS.optimistic.jobCostVariancePercent)}% lower, pipeline included at boosted conversion.</p>
+          <p><span className="text-slate-400 font-medium">Optimistic:</span> payments {Math.abs(SCENARIOS.optimistic.customerPaymentDelayDays)} days early, costs {Math.abs(SCENARIOS.optimistic.jobCostVariancePercent)}% lower, pipeline excluded.</p>
         </div>
       </Card>
 

@@ -13,7 +13,7 @@ import {
   type LiveInvoice,
   type LiveOperatingExpense,
 } from "./xero-source";
-import { liveExpectedDeposit, loadLiveOpenOpportunities, type LiveOpportunity } from "./ghl-source";
+import { loadLiveOpenOpportunities, type LiveOpportunity } from "./ghl-source";
 import { loadManualStages, type ManualStageRow } from "./manual-stages-source";
 import { loadRecurringLiabilities, projectLiabilityOccurrences, type RecurringLiabilityDTO } from "./recurring-liabilities-source";
 import { loadQuotedJobs, type QuotedJobDTO } from "./quoted-jobs-source";
@@ -130,7 +130,6 @@ function clampToday(date: string): string {
 
 export function buildLiveForecastItems(data: LiveForecastData): ForecastItem[] {
   const items: ForecastItem[] = [];
-  const depositPercent = settings.defaultDepositPercent;
 
   // Committed inflows: invoices already issued, awaiting collection.
   for (const inv of data.receivables) {
@@ -151,22 +150,10 @@ export function buildLiveForecastItems(data: LiveForecastData): ForecastItem[] {
     });
   }
 
-  // Potential inflows: real GHL pipeline expected deposits.
-  for (const opp of data.opportunities) {
-    items.push({
-      id: `live-fc-opp-${opp.id}`,
-      source: "ghl",
-      sourceId: opp.sourceId,
-      date: clampToday(addDays(opp.expectedCloseDate ?? TODAY, 7)),
-      amount: liveExpectedDeposit(opp, depositPercent),
-      direction: "inflow",
-      category: "pipeline_deposit",
-      party: opp.contact ?? undefined,
-      confidence: "potential",
-      status: `${opp.stage} - ${opp.probabilityPercent}% probability`,
-      description: `${opp.name} - expected deposit (${depositPercent}%)`,
-    });
-  }
+  // Pipeline (GHL) deposits are deliberately NOT forecast as inflows: their
+  // expected close dates aren't realistic enough to time cash against
+  // (business direction 2026-09-25). The pipeline still shows on the Sales
+  // Pipeline page and in alerts; it just never enters the cash forecast.
 
   // Committed outflows: bills outstanding.
   for (const bill of data.payables) {
