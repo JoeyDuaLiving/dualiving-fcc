@@ -9,7 +9,7 @@ import { formatAUD, formatDateAU } from "@/lib/format";
 import type { DailyCashPoint } from "@/lib/calculations";
 import type { CashDirection, Confidence, ForecastItem } from "@/types";
 
-const CONFIDENCE_OPTIONS: (Confidence | "all")[] = ["all", "actual", "committed", "forecast", "potential"];
+const CONFIDENCE_OPTIONS: (Confidence | "all")[] = ["all", "actual", "committed", "forecast"];
 const DIRECTION_OPTIONS: (CashDirection | "all")[] = ["all", "inflow", "outflow"];
 
 export function CashFlowClient({
