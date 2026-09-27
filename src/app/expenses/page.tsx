@@ -27,6 +27,7 @@ import {
   liveRevenueRequiredToCoverOpex,
   loadLiveBankSummary,
   loadLiveFinancialYearSummary,
+  loadLiveCurrentMonthRevenue,
   loadLiveOperatingExpenses,
   loadLivePreviousMonthRevenue,
   loadLiveTrailingAverageRevenue,
@@ -46,14 +47,16 @@ const CATEGORY_LABEL: Record<string, string> = {
 };
 
 export default async function ExpensesPage() {
-  const [liveOpex, liveBank, liveLiabilities, financialYear, previousMonthRevenueResult, trailingAverageRevenueResult] = await Promise.all([
-    loadLiveOperatingExpenses(),
-    loadLiveBankSummary(),
-    loadRecurringLiabilities(),
-    loadLiveFinancialYearSummary(),
-    loadLivePreviousMonthRevenue(),
-    loadLiveTrailingAverageRevenue(12),
-  ]);
+  const [liveOpex, liveBank, liveLiabilities, financialYear, previousMonthRevenueResult, trailingAverageRevenueResult, currentMonthRevenueResult] =
+    await Promise.all([
+      loadLiveOperatingExpenses(),
+      loadLiveBankSummary(),
+      loadRecurringLiabilities(),
+      loadLiveFinancialYearSummary(),
+      loadLivePreviousMonthRevenue(),
+      loadLiveTrailingAverageRevenue(12),
+      loadLiveCurrentMonthRevenue(),
+    ]);
   const isLive = liveOpex.source === "live";
 
   const liabilityRangeEnd = addDays(TODAY, 365);
@@ -92,6 +95,7 @@ export default async function ExpensesPage() {
   const revenueGap = actualMonthlyRevenue !== null ? actualMonthlyRevenue - revenueRequired : null;
   const previousMonthRevenue = isLive && previousMonthRevenueResult.source === "live" ? previousMonthRevenueResult.revenue : null;
   const trailing12MonthRevenue = isLive && trailingAverageRevenueResult.source === "live" ? trailingAverageRevenueResult.average : null;
+  const currentMonthRevenue = isLive && currentMonthRevenueResult.source === "live" ? currentMonthRevenueResult.revenue : null;
 
   const cashBalance = isLive && liveBank.source === "live" ? liveBank.totalBalance : currentCashBalance();
   // Cash runway needs the true monthly cash burn, not just P&L opex - loan
@@ -121,8 +125,11 @@ export default async function ExpensesPage() {
         </div>
       )}
 
-      <div className="grid grid-cols-2 md:grid-cols-4 gap-3 mb-6">
-        <StatCard label="Current month" value={formatAUD(currentMonth)} />
+      <div className="grid grid-cols-2 md:grid-cols-5 gap-3 mb-6">
+        <StatCard label="Current month OPEX" value={formatAUD(currentMonth)} />
+        {currentMonthRevenue !== null && (
+          <StatCard label="Current month income" value={formatAUD(currentMonthRevenue)} sub="Xero AR invoices, month to date" />
+        )}
         <StatCard label="Monthly average" value={formatAUD(monthlyAverage)} />
         <StatCard label="Annualised OPEX" value={formatAUD(annualised, { compact: true })} />
         <StatCard

@@ -25,7 +25,7 @@ import {
   ytdFinancials,
 } from "@/lib/calculations";
 import { bankAccounts, settings } from "@/lib/mock-data";
-import { loadLiveBankSummary, loadLiveReceivables, loadLivePayables, liveAverageMonthlyOpex, loadLiveFinancialYearSummary } from "@/lib/xero-source";
+import { loadLiveBankSummary, loadLiveReceivables, loadLivePayables, liveAverageMonthlyOpex, loadLiveFinancialYearSummary, loadLiveCurrentMonthRevenue } from "@/lib/xero-source";
 import { buildLiveForecastItems, generateLiveAlerts, liveCashRequiredToFinish, liveTotalActiveJobCashRequirement, liveTotalWip, loadLiveForecastData } from "@/lib/live-forecast";
 import { liveConfirmedFutureRevenue, liveNextPayment } from "@/lib/jobs-source";
 import { liveWeightedPipelineValue } from "@/lib/ghl-source";
@@ -36,15 +36,18 @@ import { BankBalanceCard } from "@/components/dashboard/BankBalanceCard";
 export const dynamic = "force-dynamic";
 
 export default async function DashboardPage() {
-  const [liveBank, liveReceivables, livePayables, liveForecast, liveFinancialYear, reconciliation, manualBankBalance] = await Promise.all([
-    loadLiveBankSummary(),
-    loadLiveReceivables(),
-    loadLivePayables(),
-    loadLiveForecastData(),
-    loadLiveFinancialYearSummary(),
-    loadReconciliation(),
-    loadManualBankBalance(),
-  ]);
+  const [liveBank, liveReceivables, livePayables, liveForecast, liveFinancialYear, reconciliation, manualBankBalance, currentMonthRevenueResult] =
+    await Promise.all([
+      loadLiveBankSummary(),
+      loadLiveReceivables(),
+      loadLivePayables(),
+      loadLiveForecastData(),
+      loadLiveFinancialYearSummary(),
+      loadReconciliation(),
+      loadManualBankBalance(),
+      loadLiveCurrentMonthRevenue(),
+    ]);
+  const currentMonthRevenue = currentMonthRevenueResult.source === "live" ? currentMonthRevenueResult.revenue : null;
   const cashIsLive = liveBank.source === "live";
   const arIsLive = liveReceivables.source === "live";
   const apIsLive = livePayables.source === "live";
@@ -223,6 +226,9 @@ export default async function DashboardPage() {
           href="/jobs"
         />
         <StatCard label="Monthly OPEX" value={formatAUD(monthlyOpex, { compact: true })} sub={forecastIsLive ? "Xero, live avg" : "Avg of last 2 months"} href="/expenses" />
+        {currentMonthRevenue !== null && (
+          <StatCard label="Current month income" value={formatAUD(currentMonthRevenue, { compact: true })} sub="Xero AR invoices, month to date" href="/expenses" />
+        )}
         <StatCard label="Cash runway" value={runwayMonths === Infinity ? "N/A" : `${runwayMonths.toFixed(1)} mo`} sub="Cash / avg monthly burn" href="/expenses" />
         <StatCard label="Confirmed future revenue" value={formatAUD(confirmedRevenue, { compact: true })} sub="Remaining active-job revenue" href="/jobs" />
         <StatCard label="Weighted pipeline" value={formatAUD(weightedPipeline, { compact: true })} sub="GHL, probability-weighted" href="/pipeline" tone="default" />

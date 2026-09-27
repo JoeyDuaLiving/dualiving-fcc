@@ -212,6 +212,19 @@ export async function loadLivePreviousMonthRevenue(): Promise<LivePreviousMonthR
   }
 }
 
+/** Real Xero AR invoice revenue for the current, still-accumulating
+ * calendar month - same "current month" convention as liveCurrentMonthOpex,
+ * so the two sit naturally side by side on the Expenses page. */
+export async function loadLiveCurrentMonthRevenue(): Promise<LivePreviousMonthRevenueResult> {
+  try {
+    const byMonth = await loadLiveRevenueByMonth();
+    if (!byMonth) return { revenue: 0, source: "unavailable" };
+    return { revenue: byMonth.get(opexMonthKey(TODAY)) ?? 0, source: "live" };
+  } catch {
+    return { revenue: 0, source: "unavailable" };
+  }
+}
+
 export interface LiveTrailingAverageRevenueResult {
   average: number;
   monthsIncluded: number;
