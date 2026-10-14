@@ -116,10 +116,55 @@ function LiveJobDetailView({ detail }: { detail: LiveJobDetail }) {
           tone={revisedRevenue > 0 ? (profitToDatePercent < 0 ? "bad" : "good") : "default"}
         />
         <StatCard label="Cash received" value={formatAUD(cashPosition.cashReceived)} sub={`of ${formatAUD(cashPosition.amountInvoicedToDate)} invoiced`} />
-        <StatCard label="WIP" value={formatAUD(cashPosition.wip)} sub="Actual + committed cost not yet billed" />
         <StatCard label="Xero bills" value={formatAUD(xeroBillsTotal)} sub={`${xeroBills.length} matched`} />
         <StatCard label="Xero invoices" value={formatAUD(xeroInvoicesTotal)} sub={`${xeroInvoices.length} matched`} />
       </div>
+
+      <Card title="Billing position (percentage-of-completion)" className="mb-6">
+        <p className="text-xs text-slate-500 mb-4">
+          {cashPosition.billingMethod === "percent-complete" ? (
+            <>
+              Percent complete = actual cost ({formatAUD(job.actualCost)}) &divide; Buildxact&rsquo;s original estimate (
+              {formatAUD(estimatedCost!)}) = {cashPosition.percentCompleteForBilling.toFixed(1)}%. Earned revenue = that
+              percentage &times; contract value ({formatAUD(revisedRevenue)}) = {formatAUD(cashPosition.earnedRevenue)}.
+              Compared against {formatAUD(cashPosition.amountInvoicedToDate)} actually billed: if billings are behind
+              earned revenue, the gap is WIP (an asset - work done, not yet billed); if billings are ahead, it&rsquo;s
+              overbilling (a liability - billed ahead of work done). The estimate is Buildxact&rsquo;s original one, not
+              re-forecast, so percent complete can read high (capped at 100%) for a job running over budget.
+            </>
+          ) : (
+            <>
+              Buildxact has no estimate recorded for this job, so percent complete and earned revenue can&rsquo;t be
+              calculated - falling back to a simple cost-vs-billings comparison (actual + committed cost vs amount
+              invoiced) for WIP instead.
+            </>
+          )}
+        </p>
+        <div className="grid grid-cols-2 md:grid-cols-4 gap-3">
+          <StatCard
+            label="Percent complete"
+            value={cashPosition.billingMethod === "percent-complete" ? `${cashPosition.percentCompleteForBilling.toFixed(0)}%` : "N/A"}
+            sub={cashPosition.billingMethod === "percent-complete" ? "Actual cost / estimate" : "No estimate on this job"}
+          />
+          <StatCard
+            label="Earned revenue"
+            value={cashPosition.billingMethod === "percent-complete" ? formatAUD(cashPosition.earnedRevenue) : "N/A"}
+            sub="% complete &times; contract value"
+          />
+          <StatCard
+            label="WIP (underbilled)"
+            value={formatAUD(cashPosition.wip)}
+            tone={cashPosition.wip > 0 ? "warn" : "default"}
+            sub="Work done, not yet billed - an asset"
+          />
+          <StatCard
+            label="Overbilling"
+            value={formatAUD(cashPosition.overbilling)}
+            tone={cashPosition.overbilling > 0 ? "bad" : "default"}
+            sub="Billed ahead of work done - a liability"
+          />
+        </div>
+      </Card>
 
       <div className="mb-6 rounded-lg border border-slate-800 bg-slate-900/40 px-4 py-3 text-xs text-slate-400">
         Xero bills/invoices below are matched to this job by job code (Xero&rsquo;s &ldquo;Job Codes&rdquo; tracking

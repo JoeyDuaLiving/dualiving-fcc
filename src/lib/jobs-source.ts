@@ -54,6 +54,56 @@ function dbJobToJob(row: JobRow): Job {
   };
 }
 
+export interface JobBillingPosition {
+  method: "percent-complete" | "cost-only"; // cost-only is the fallback used when Buildxact has no estimate for this job
+  percentComplete: number; // 0-100, for revenue recognition - not the same as Buildxact's own progressPercent
+  earnedRevenue: number;
+  wip: number; // underbilled amount (an asset - work done, not yet billed)
+  overbilling: number; // billed ahead of work done (a liability)
+}
+
+/** Standard construction percentage-of-completion WIP schedule (confirmed
+ * with the business 2026-10-15), not a raw cost-vs-billings comparison:
+ * Percent Complete = actual cost / ECAC (Total Estimated Costs). Earned
+ * Revenue = percent complete x contract value (+ approved variations).
+ * Underbilled (WIP, an asset - work done not yet billed) or Overbilled (a
+ * liability - billed ahead of work done) is the gap between that and
+ * what's actually been invoiced.
+ *
+ * ECAC uses Buildxact's own original Estimate object (estimatedTotalIncTax)
+ * - the only "total estimated cost" figure it exposes. Per business
+ * direction, used as-is rather than re-forecast: it won't move as a job
+ * runs over budget, so percent complete can read artificially high (capped
+ * at 100%) for an overrunning job - a known, accepted limitation, not a
+ * bug. Falls back to the older raw cost-vs-billings comparison only when
+ * Buildxact has no estimate at all for this job (around 4 of 111 jobs) -
+ * percent complete is meaningless without one. */
+export function computeJobBillingPosition(params: {
+  actualCost: number;
+  committedCost: number;
+  estimatedCost: number | null;
+  contractValue: number;
+  approvedVariations: number;
+  amountInvoicedToDate: number;
+}): JobBillingPosition {
+  if (!params.estimatedCost || params.estimatedCost <= 0) {
+    const costPosition = Math.max(0, params.actualCost + params.committedCost - params.amountInvoicedToDate);
+    return { method: "cost-only", percentComplete: 0, earnedRevenue: 0, wip: costPosition, overbilling: 0 };
+  }
+
+  const percentComplete = Math.min(100, Math.max(0, (params.actualCost / params.estimatedCost) * 100));
+  const totalContractValue = params.contractValue + params.approvedVariations;
+  const earnedRevenue = (percentComplete / 100) * totalContractValue;
+  const overUnderBilling = params.amountInvoicedToDate - earnedRevenue;
+  return {
+    method: "percent-complete",
+    percentComplete,
+    earnedRevenue,
+    wip: Math.max(0, -overUnderBilling),
+    overbilling: Math.max(0, overUnderBilling),
+  };
+}
+
 export interface LiveJobsListResult {
   jobs: Job[];
   // Keyed by Job.id (Buildxact sourceId) - sum of that job's invoice/payment
@@ -170,6 +220,8 @@ export interface LiveJobCashPositionRow {
   cashReceived: number;
   cashOutstanding: number;
   wip: number;
+  overbilling: number;
+  billingMethod: JobBillingPosition["method"];
 }
 
 export interface LiveJobsCashPositionsResult {
@@ -226,12 +278,23 @@ export async function loadLiveActiveJobsCashPositions(): Promise<LiveJobsCashPos
       const jobInvoices = byJob.get(jobRow.id) ?? [];
       const amountInvoicedToDate = jobInvoices.reduce((s, r) => s + r.totalIncTax, 0);
       const cashReceived = jobInvoices.filter((r) => r.status === "Received").reduce((s, r) => s + r.totalIncTax, 0);
+      const rawJob = jobRow.raw as BuildxactJob | null;
+      const billing = computeJobBillingPosition({
+        actualCost: jobRow.actualCost,
+        committedCost: jobRow.committedCost,
+        estimatedCost: rawJob?.estimatedTotalIncTax ? rawJob.estimatedTotalIncTax : null,
+        contractValue: jobRow.contractValue,
+        approvedVariations: jobRow.approvedVariations,
+        amountInvoicedToDate,
+      });
       return {
         job: dbJobToJob(jobRow),
         amountInvoicedToDate,
         cashReceived,
         cashOutstanding: amountInvoicedToDate - cashReceived,
-        wip: Math.max(0, jobRow.actualCost + jobRow.committedCost - amountInvoicedToDate),
+        wip: billing.wip,
+        overbilling: billing.overbilling,
+        billingMethod: billing.method,
       };
     });
 
@@ -258,6 +321,10 @@ export interface LiveJobDetail {
     cashReceived: number;
     cashOutstanding: number;
     wip: number;
+    overbilling: number;
+    billingMethod: JobBillingPosition["method"];
+    percentCompleteForBilling: number;
+    earnedRevenue: number;
   };
   purchaseOrders: BuildxactPurchaseOrder[];
   invoices: BuildxactJobInvoice[];
@@ -321,6 +388,14 @@ export async function loadLiveJobDetail(jobId: string): Promise<LiveJobDetailRes
 
     const rawJob = jobRow.raw as BuildxactJob | null;
     const estimatedCost = rawJob?.estimatedTotalIncTax ? rawJob.estimatedTotalIncTax : null;
+    const billing = computeJobBillingPosition({
+      actualCost: jobRow.actualCost,
+      committedCost: jobRow.committedCost,
+      estimatedCost,
+      contractValue: jobRow.contractValue,
+      approvedVariations: jobRow.approvedVariations,
+      amountInvoicedToDate,
+    });
 
     const xeroBillsOut: XeroMatchedRecord[] = xeroBillRows.map((b) => ({
       id: b.id,
@@ -347,7 +422,11 @@ export async function loadLiveJobDetail(jobId: string): Promise<LiveJobDetailRes
           amountInvoicedToDate,
           cashReceived,
           cashOutstanding: amountInvoicedToDate - cashReceived,
-          wip: Math.max(0, jobRow.actualCost + jobRow.committedCost - amountInvoicedToDate),
+          wip: billing.wip,
+          overbilling: billing.overbilling,
+          billingMethod: billing.method,
+          percentCompleteForBilling: billing.percentComplete,
+          earnedRevenue: billing.earnedRevenue,
         },
         purchaseOrders: purchaseOrdersOut,
         invoices: invoicesOut,
