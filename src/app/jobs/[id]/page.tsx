@@ -116,7 +116,7 @@ function LiveJobDetailView({ detail }: { detail: LiveJobDetail }) {
           tone={revisedRevenue > 0 ? (profitToDatePercent < 0 ? "bad" : "good") : "default"}
         />
         <StatCard label="Cash received" value={formatAUD(cashPosition.cashReceived)} sub={`of ${formatAUD(cashPosition.amountInvoicedToDate)} invoiced`} />
-        <StatCard label="WIP" value={formatAUD(cashPosition.wip)} sub="Cost incurred, not yet billed" />
+        <StatCard label="WIP" value={formatAUD(cashPosition.wip)} sub="Actual + committed cost not yet billed" />
         <StatCard label="Xero bills" value={formatAUD(xeroBillsTotal)} sub={`${xeroBills.length} matched`} />
         <StatCard label="Xero invoices" value={formatAUD(xeroInvoicesTotal)} sub={`${xeroInvoices.length} matched`} />
       </div>

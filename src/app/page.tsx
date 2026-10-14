@@ -166,7 +166,7 @@ export default async function DashboardPage() {
         />
         <StatCard label="Accounts receivable" value={formatAUD(ar)} sub={`${arCount} open invoices${arIsLive ? " · live" : ""}`} href="/receivables" />
         <StatCard label="Accounts payable" value={formatAUD(ap)} sub={`${apCount} open bills${apIsLive ? " · live" : ""}`} href="/payables" />
-        <StatCard label="Current WIP" value={formatAUD(wip)} sub="Cost incurred, not yet billed" href="/jobs" />
+        <StatCard label="Current WIP" value={formatAUD(wip)} sub="Actual + committed cost not yet billed" href="/jobs" />
         <StatCard
           label="Cash to complete active jobs"
           value={formatAUD(cashRequired)}
