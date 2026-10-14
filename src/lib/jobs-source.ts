@@ -276,7 +276,13 @@ export async function loadLiveActiveJobsCashPositions(): Promise<LiveJobsCashPos
 
     const rows: LiveJobCashPositionRow[] = activeRows.map((jobRow) => {
       const jobInvoices = byJob.get(jobRow.id) ?? [];
-      const amountInvoicedToDate = jobInvoices.reduce((s, r) => s + r.totalIncTax, 0);
+      // "Pending" is a scheduled future payment stage Buildxact hasn't
+      // actually issued yet - not a real invoice, so it doesn't count as
+      // billed (confirmed live 2026-10-15: a $80,780 "Pending" stage was
+      // being counted as invoiced, inflating billings-to-date and this
+      // job's apparent overbilling).
+      const issuedInvoices = jobInvoices.filter((r) => r.status !== "Pending");
+      const amountInvoicedToDate = issuedInvoices.reduce((s, r) => s + r.totalIncTax, 0);
       const cashReceived = jobInvoices.filter((r) => r.status === "Received").reduce((s, r) => s + r.totalIncTax, 0);
       const rawJob = jobRow.raw as BuildxactJob | null;
       const billing = computeJobBillingPosition({
@@ -383,7 +389,10 @@ export async function loadLiveJobDetail(jobId: string): Promise<LiveJobDetailRes
     const purchaseOrdersOut = poRows.map((r) => r.raw as BuildxactPurchaseOrder);
     const invoicesOut = invRows.map((r) => r.raw as BuildxactJobInvoice);
 
-    const amountInvoicedToDate = invRows.reduce((s, r) => s + r.totalIncTax, 0);
+    // "Pending" is a scheduled future payment stage Buildxact hasn't
+    // actually issued yet - not a real invoice, so it doesn't count as
+    // billed (see loadLiveActiveJobsCashPositions above for the same fix).
+    const amountInvoicedToDate = invRows.filter((r) => r.status !== "Pending").reduce((s, r) => s + r.totalIncTax, 0);
     const cashReceived = invRows.filter((r) => r.status === "Received").reduce((s, r) => s + r.totalIncTax, 0);
 
     const rawJob = jobRow.raw as BuildxactJob | null;
