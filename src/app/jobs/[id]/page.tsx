@@ -7,6 +7,7 @@ import { StatusPill } from "@/components/shared/Badges";
 import { formatAUD, formatDateAU } from "@/lib/format";
 import { loadLiveJobDetail, type LiveJobDetail } from "@/lib/jobs-source";
 import type { BuildxactPurchaseOrder } from "@/integrations/buildxact/types";
+import { ManualLabourCostEditor } from "@/components/jobs/ManualLabourCostEditor";
 
 export default async function JobDetailPage({ params }: { params: Promise<{ id: string }> }) {
   const { id } = await params;
@@ -49,7 +50,11 @@ function LiveJobDetailView({ detail }: { detail: LiveJobDetail }) {
     return Math.max(0, po.orderTotalIncTax - po.invoiceTotalIncTax);
   }
   const isLabourPO = (po: BuildxactPurchaseOrder) => LABOUR_TAG_RE.test(po.description ?? "");
-  const labourCostToDate = purchaseOrders.filter(isLabourPO).reduce((s, po) => s + poCostToDateContribution(po), 0);
+  const estimatedLabourCostToDate = purchaseOrders.filter(isLabourPO).reduce((s, po) => s + poCostToDateContribution(po), 0);
+  // Prefer the manually entered figure (from the business's own labour
+  // spreadsheet) over the PO-keyword guess once someone has set it for this
+  // job - a real number beats a heuristic.
+  const labourCostToDate = detail.manualLabourCost ? Math.min(detail.manualLabourCost.amount, costToDate) : estimatedLabourCostToDate;
   const materialsAndOtherCostToDate = Math.max(0, costToDate - labourCostToDate);
   const labourPercent = costToDate > 0 ? (labourCostToDate / costToDate) * 100 : 0;
 
@@ -111,6 +116,7 @@ function LiveJobDetailView({ detail }: { detail: LiveJobDetail }) {
           tone={revisedRevenue > 0 ? (profitToDatePercent < 0 ? "bad" : "good") : "default"}
         />
         <StatCard label="Cash received" value={formatAUD(cashPosition.cashReceived)} sub={`of ${formatAUD(cashPosition.amountInvoicedToDate)} invoiced`} />
+        <StatCard label="WIP" value={formatAUD(cashPosition.wip)} sub="Cost incurred, not yet billed" />
         <StatCard label="Xero bills" value={formatAUD(xeroBillsTotal)} sub={`${xeroBills.length} matched`} />
         <StatCard label="Xero invoices" value={formatAUD(xeroInvoicesTotal)} sub={`${xeroInvoices.length} matched`} />
       </div>
@@ -190,7 +196,11 @@ function LiveJobDetailView({ detail }: { detail: LiveJobDetail }) {
         </Card>
       </div>
 
-      <Card title="Cost breakdown" className="mb-6">
+      <Card
+        title="Cost breakdown"
+        className="mb-6"
+        action={<ManualLabourCostEditor jobSourceId={job.id} current={detail.manualLabourCost} />}
+      >
         <div className="space-y-3">
           <div>
             <div className="flex justify-between text-xs mb-1">
@@ -216,10 +226,19 @@ function LiveJobDetailView({ detail }: { detail: LiveJobDetail }) {
           </div>
         </div>
         <p className="text-xs text-slate-500 mt-4">
-          Subcontractor labour only, detected from purchase order descriptions (&ldquo;Labour&rdquo;, &ldquo;Wages&rdquo;,
-          &ldquo;Superannuation&rdquo;) - this doesn&rsquo;t include your own crew&rsquo;s wages, which aren&rsquo;t
-          tracked per job in Buildxact. Tagged orders are marked &ldquo;Labour&rdquo; in the Purchase orders table
-          above.
+          {detail.manualLabourCost ? (
+            <>
+              Labour figure entered manually{detail.manualLabourCost.note ? ` (${detail.manualLabourCost.note})` : ""} - from your own
+              per-job labour spreadsheet, last set {formatDateAU(detail.manualLabourCost.updatedAt)}.
+            </>
+          ) : (
+            <>
+              Estimated from purchase order descriptions (&ldquo;Labour&rdquo;, &ldquo;Wages&rdquo;, &ldquo;Superannuation&rdquo;) - this
+              doesn&rsquo;t include your own crew&rsquo;s wages, which aren&rsquo;t tracked per job in Buildxact. Tagged orders are marked
+              &ldquo;Labour&rdquo; in the Purchase orders table above. Enter the real figure from your labour spreadsheet above to replace
+              this estimate.
+            </>
+          )}
         </p>
       </Card>
 

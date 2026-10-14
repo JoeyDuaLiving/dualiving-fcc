@@ -1,7 +1,7 @@
 import "server-only";
 import { and, desc, eq, inArray, ne } from "drizzle-orm";
 import { db } from "@/db/client";
-import { bills, invoices, jobInvoicePayments, jobs, purchaseOrders, syncRuns } from "@/db/schema";
+import { bills, invoices, jobInvoicePayments, jobManualLabourCosts, jobs, purchaseOrders, syncRuns } from "@/db/schema";
 import type { BuildxactJob, BuildxactJobInvoice, BuildxactPurchaseOrder } from "@/integrations/buildxact/types";
 import type { XeroInvoice } from "@/integrations/xero/types";
 import type { ManualStageRow } from "@/lib/manual-stages-source";
@@ -276,6 +276,11 @@ export interface LiveJobDetail {
   // when Buildxact has no estimate value for this job, rather than shown as
   // $0 - a missing estimate isn't the same as a $0 one.
   estimatedCost: number | null;
+  // Subcontractor labour cost as tracked on the business's own per-job
+  // spreadsheet (manually entered - see /api/job-labour-cost) - null until
+  // someone sets it for this job, at which point it replaces the PO-
+  // keyword-matching guess the job detail page otherwise falls back to.
+  manualLabourCost: { amount: number; note: string | null; updatedAt: string } | null;
 }
 
 export interface LiveJobDetailResult {
@@ -297,12 +302,16 @@ export async function loadLiveJobDetail(jobId: string): Promise<LiveJobDetailRes
       return { detail: null, source: "unavailable" };
     }
 
-    const [poRows, invRows, xeroBillRows, xeroInvoiceRows] = await Promise.all([
+    const [poRows, invRows, xeroBillRows, xeroInvoiceRows, labourRows] = await Promise.all([
       db.select().from(purchaseOrders).where(eq(purchaseOrders.jobId, jobRow.id)),
       db.select().from(jobInvoicePayments).where(eq(jobInvoicePayments.jobId, jobRow.id)),
       db.select().from(bills).where(and(eq(bills.jobId, jobRow.id), eq(bills.source, "xero"))),
       db.select().from(invoices).where(and(eq(invoices.jobId, jobRow.id), eq(invoices.source, "xero"))),
+      db.select().from(jobManualLabourCosts).where(eq(jobManualLabourCosts.jobId, jobRow.id)),
     ]);
+    const manualLabourCost = labourRows[0]
+      ? { amount: labourRows[0].amount, note: labourRows[0].note, updatedAt: labourRows[0].updatedAt.toISOString().slice(0, 10) }
+      : null;
 
     const purchaseOrdersOut = poRows.map((r) => r.raw as BuildxactPurchaseOrder);
     const invoicesOut = invRows.map((r) => r.raw as BuildxactJobInvoice);
@@ -345,6 +354,7 @@ export async function loadLiveJobDetail(jobId: string): Promise<LiveJobDetailRes
         xeroBills: xeroBillsOut,
         xeroInvoices: xeroInvoicesOut,
         estimatedCost,
+        manualLabourCost,
       },
       source: "live",
     };

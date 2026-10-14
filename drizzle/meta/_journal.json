@@ -64,6 +64,13 @@
       "when": 1789692225817,
       "tag": "0008_third_chameleon",
       "breakpoints": true
+    },
+    {
+      "idx": 9,
+      "version": "7",
+      "when": 1792000441069,
+      "tag": "0009_safe_boomer",
+      "breakpoints": true
     }
   ]
 }

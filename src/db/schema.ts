@@ -332,6 +332,24 @@ export const purchaseOrders = pgTable(
   ]
 );
 
+// Manual subcontractor labour cost per job - business tracks this on its
+// own spreadsheet per job (not a Buildxact field), one editable figure per
+// job rather than a history of entries. Replaces the PO-keyword-matching
+// guess on the job detail page once set.
+export const jobManualLabourCosts = pgTable(
+  "job_manual_labour_costs",
+  {
+    id: id(),
+    jobId: text("job_id")
+      .notNull()
+      .references(() => jobs.id, { onDelete: "cascade" }),
+    amount: doublePrecision("amount").notNull(),
+    note: text("note"),
+    updatedAt: timestamp("updated_at").notNull().defaultNow(),
+  },
+  (t) => [uniqueIndex("job_manual_labour_costs_job_idx").on(t.jobId)]
+);
+
 // Named jobInvoicePayments (not "invoices") because this is Buildxact's own
 // job payment-schedule/invoice object - NOT the Xero `invoices` table below,
 // which is the accounting system of record once Xero is connected. The two
