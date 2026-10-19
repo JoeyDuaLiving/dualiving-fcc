@@ -77,7 +77,15 @@ export interface JobBillingPosition {
  * at 100%) for an overrunning job - a known, accepted limitation, not a
  * bug. Falls back to the older raw cost-vs-billings comparison only when
  * Buildxact has no estimate at all for this job (around 4 of 111 jobs) -
- * percent complete is meaningless without one. */
+ * percent complete is meaningless without one.
+ *
+ * A job Buildxact itself marks "complete" is treated as 100% regardless of
+ * the cost ratio (confirmed live 2026-10-19 on J1170: actual cost came in
+ * under the original estimate on a finished, fully-invoiced job, which the
+ * cost-ratio alone read as only 90.7% complete and so showed a false
+ * ~$9.8k "overbilling" on a job that was actually done and fully paid -
+ * completion status is a more reliable "done" signal than a cost ratio
+ * for a job that finished under budget). */
 export function computeJobBillingPosition(params: {
   actualCost: number;
   committedCost: number;
@@ -85,13 +93,14 @@ export function computeJobBillingPosition(params: {
   contractValue: number;
   approvedVariations: number;
   amountInvoicedToDate: number;
+  isComplete: boolean;
 }): JobBillingPosition {
   if (!params.estimatedCost || params.estimatedCost <= 0) {
     const costPosition = Math.max(0, params.actualCost + params.committedCost - params.amountInvoicedToDate);
-    return { method: "cost-only", percentComplete: 0, earnedRevenue: 0, wip: costPosition, overbilling: 0 };
+    return { method: "cost-only", percentComplete: params.isComplete ? 100 : 0, earnedRevenue: 0, wip: costPosition, overbilling: 0 };
   }
 
-  const percentComplete = Math.min(100, Math.max(0, (params.actualCost / params.estimatedCost) * 100));
+  const percentComplete = params.isComplete ? 100 : Math.min(100, Math.max(0, (params.actualCost / params.estimatedCost) * 100));
   const totalContractValue = params.contractValue + params.approvedVariations;
   const earnedRevenue = (percentComplete / 100) * totalContractValue;
   const overUnderBilling = params.amountInvoicedToDate - earnedRevenue;
@@ -292,6 +301,7 @@ export async function loadLiveActiveJobsCashPositions(): Promise<LiveJobsCashPos
         contractValue: jobRow.contractValue,
         approvedVariations: jobRow.approvedVariations,
         amountInvoicedToDate,
+        isComplete: jobRow.status === "complete",
       });
       return {
         job: dbJobToJob(jobRow),
@@ -404,6 +414,7 @@ export async function loadLiveJobDetail(jobId: string): Promise<LiveJobDetailRes
       contractValue: jobRow.contractValue,
       approvedVariations: jobRow.approvedVariations,
       amountInvoicedToDate,
+      isComplete: jobRow.status === "complete",
     });
 
     const xeroBillsOut: XeroMatchedRecord[] = xeroBillRows.map((b) => ({

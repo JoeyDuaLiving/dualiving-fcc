@@ -124,13 +124,23 @@ function LiveJobDetailView({ detail }: { detail: LiveJobDetail }) {
         <p className="text-xs text-slate-500 mb-4">
           {cashPosition.billingMethod === "percent-complete" ? (
             <>
-              Percent complete = actual cost ({formatAUD(job.actualCost)}) &divide; Buildxact&rsquo;s original estimate (
-              {formatAUD(estimatedCost!)}) = {cashPosition.percentCompleteForBilling.toFixed(1)}%. Earned revenue = that
-              percentage &times; contract value ({formatAUD(revisedRevenue)}) = {formatAUD(cashPosition.earnedRevenue)}.
-              Compared against {formatAUD(cashPosition.amountInvoicedToDate)} actually billed: if billings are behind
-              earned revenue, the gap is WIP (an asset - work done, not yet billed); if billings are ahead, it&rsquo;s
-              overbilling (a liability - billed ahead of work done). The estimate is Buildxact&rsquo;s original one, not
-              re-forecast, so percent complete can read high (capped at 100%) for a job running over budget.
+              {job.status === "complete" ? (
+                <>
+                  Buildxact marks this job complete, so percent complete = 100% regardless of the cost ratio (actual
+                  cost {formatAUD(job.actualCost)} vs estimate {formatAUD(estimatedCost!)}).
+                </>
+              ) : (
+                <>
+                  Percent complete = actual cost ({formatAUD(job.actualCost)}) &divide; Buildxact&rsquo;s original
+                  estimate ({formatAUD(estimatedCost!)}) = {cashPosition.percentCompleteForBilling.toFixed(1)}%.
+                </>
+              )}{" "}
+              Earned revenue = that percentage &times; contract value ({formatAUD(revisedRevenue)}) ={" "}
+              {formatAUD(cashPosition.earnedRevenue)}. Compared against {formatAUD(cashPosition.amountInvoicedToDate)}{" "}
+              actually billed: if billings are behind earned revenue, the gap is WIP (an asset - work done, not yet
+              billed); if billings are ahead, it&rsquo;s overbilling (a liability - billed ahead of work done). The
+              estimate is Buildxact&rsquo;s original one, not re-forecast, so percent complete can read high (capped
+              at 100%) for a job running over budget that Buildxact hasn&rsquo;t yet marked complete.
             </>
           ) : (
             <>
@@ -144,7 +154,13 @@ function LiveJobDetailView({ detail }: { detail: LiveJobDetail }) {
           <StatCard
             label="Percent complete"
             value={cashPosition.billingMethod === "percent-complete" ? `${cashPosition.percentCompleteForBilling.toFixed(0)}%` : "N/A"}
-            sub={cashPosition.billingMethod === "percent-complete" ? "Actual cost / estimate" : "No estimate on this job"}
+            sub={
+              cashPosition.billingMethod === "percent-complete"
+                ? job.status === "complete"
+                  ? "Marked complete in Buildxact"
+                  : "Actual cost / estimate"
+                : "No estimate on this job"
+            }
           />
           <StatCard
             label="Earned revenue"
