@@ -4,7 +4,7 @@ import { ArrowLeft } from "lucide-react";
 import { Card } from "@/components/shared/Card";
 import { StatCard } from "@/components/shared/StatCard";
 import { StatusPill } from "@/components/shared/Badges";
-import { formatAUD, formatDateAU } from "@/lib/format";
+import { formatAUD, formatAUDSigned, formatDateAU } from "@/lib/format";
 import { loadLiveJobDetail, type LiveJobDetail } from "@/lib/jobs-source";
 import type { BuildxactPurchaseOrder } from "@/integrations/buildxact/types";
 import { ManualLabourCostEditor } from "@/components/jobs/ManualLabourCostEditor";
@@ -31,6 +31,12 @@ function LiveJobDetailView({ detail }: { detail: LiveJobDetail }) {
   const revisedRevenue = job.contractValue + job.approvedVariations;
   const costToDate = job.actualCost + cashPosition.committedCost;
   const profitToDatePercent = revisedRevenue > 0 ? ((revisedRevenue - costToDate) / revisedRevenue) * 100 : 0;
+
+  // Mirrors computeJobBillingPosition's isFullyComplete gate - Buildxact's
+  // "complete" status only counts as done for billing once committed cost
+  // (open POs the subcontractor hasn't invoiced yet) has also cleared.
+  const isFullyComplete = job.status === "complete" && cashPosition.committedCost <= 0;
+  const costVsEstimate = estimatedCost !== null ? estimatedCost - job.actualCost : null;
 
   // Subcontractor labour, detected from PO descriptions ("Labour", "Wages",
   // "Superannuation") - the same word-boundary tagging pattern as the STOCK
@@ -124,10 +130,11 @@ function LiveJobDetailView({ detail }: { detail: LiveJobDetail }) {
         <p className="text-xs text-slate-500 mb-4">
           {cashPosition.billingMethod === "percent-complete" ? (
             <>
-              {job.status === "complete" ? (
+              {isFullyComplete ? (
                 <>
-                  Buildxact marks this job complete, so percent complete = 100% regardless of the cost ratio (actual
-                  cost {formatAUD(job.actualCost)} vs estimate {formatAUD(estimatedCost!)}).
+                  Buildxact marks this job complete with no committed cost outstanding, so percent complete = 100%
+                  regardless of the cost ratio (actual cost {formatAUD(job.actualCost)} vs estimate{" "}
+                  {formatAUD(estimatedCost!)}).
                 </>
               ) : (
                 <>
@@ -156,7 +163,7 @@ function LiveJobDetailView({ detail }: { detail: LiveJobDetail }) {
             value={cashPosition.billingMethod === "percent-complete" ? `${cashPosition.percentCompleteForBilling.toFixed(0)}%` : "N/A"}
             sub={
               cashPosition.billingMethod === "percent-complete"
-                ? job.status === "complete"
+                ? isFullyComplete
                   ? "Marked complete in Buildxact"
                   : "Actual cost / estimate"
                 : "No estimate on this job"
@@ -179,6 +186,14 @@ function LiveJobDetailView({ detail }: { detail: LiveJobDetail }) {
             tone={cashPosition.overbilling > 0 ? "bad" : "default"}
             sub="Billed ahead of work done - a liability"
           />
+          {isFullyComplete && costVsEstimate !== null && (
+            <StatCard
+              label="Vs original estimate"
+              value={formatAUDSigned(costVsEstimate)}
+              tone={costVsEstimate >= 0 ? "good" : "bad"}
+              sub={costVsEstimate >= 0 ? "Finished under budget" : "Finished over budget"}
+            />
+          )}
         </div>
       </Card>
 

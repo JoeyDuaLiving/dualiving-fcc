@@ -80,12 +80,16 @@ export interface JobBillingPosition {
  * percent complete is meaningless without one.
  *
  * A job Buildxact itself marks "complete" is treated as 100% regardless of
- * the cost ratio (confirmed live 2026-10-19 on J1170: actual cost came in
- * under the original estimate on a finished, fully-invoiced job, which the
- * cost-ratio alone read as only 90.7% complete and so showed a false
- * ~$9.8k "overbilling" on a job that was actually done and fully paid -
- * completion status is a more reliable "done" signal than a cost ratio
- * for a job that finished under budget). */
+ * the cost ratio, but only once committed cost has also cleared to ~$0
+ * (confirmed live 2026-10-19 on J1170: actual cost came in under the
+ * original estimate on a finished, fully-invoiced job, which the cost-ratio
+ * alone read as only 90.7% complete and so showed a false ~$9.8k
+ * "overbilling" on a job that was actually done and fully paid - completion
+ * status is a more reliable "done" signal than a cost ratio for a job that
+ * finished under budget). 38 of 111 "complete" jobs still carry committed
+ * cost (open POs the subcontractor hasn't invoiced yet) - per business
+ * direction (2026-10-20), those aren't treated as fully done yet, so they
+ * fall through to the ordinary cost-ratio calculation until that clears. */
 export function computeJobBillingPosition(params: {
   actualCost: number;
   committedCost: number;
@@ -95,12 +99,14 @@ export function computeJobBillingPosition(params: {
   amountInvoicedToDate: number;
   isComplete: boolean;
 }): JobBillingPosition {
+  const isFullyComplete = params.isComplete && params.committedCost <= 0;
+
   if (!params.estimatedCost || params.estimatedCost <= 0) {
     const costPosition = Math.max(0, params.actualCost + params.committedCost - params.amountInvoicedToDate);
-    return { method: "cost-only", percentComplete: params.isComplete ? 100 : 0, earnedRevenue: 0, wip: costPosition, overbilling: 0 };
+    return { method: "cost-only", percentComplete: isFullyComplete ? 100 : 0, earnedRevenue: 0, wip: costPosition, overbilling: 0 };
   }
 
-  const percentComplete = params.isComplete ? 100 : Math.min(100, Math.max(0, (params.actualCost / params.estimatedCost) * 100));
+  const percentComplete = isFullyComplete ? 100 : Math.min(100, Math.max(0, (params.actualCost / params.estimatedCost) * 100));
   const totalContractValue = params.contractValue + params.approvedVariations;
   const earnedRevenue = (percentComplete / 100) * totalContractValue;
   const overUnderBilling = params.amountInvoicedToDate - earnedRevenue;
