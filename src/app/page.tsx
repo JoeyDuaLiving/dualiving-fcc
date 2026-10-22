@@ -81,7 +81,12 @@ export default async function DashboardPage() {
       : 0
     : ytd.marginPercent || 25;
   const monthlyOpex = forecastIsLive ? liveAverageMonthlyOpex(liveForecast.data!.operatingExpenses) : averageMonthlyOpex();
-  const runwayMonths = forecastIsLive ? (monthlyOpex > 0 ? bankBalance / monthlyOpex : Infinity) : simpleCashRunwayMonths();
+  // Only one bank account exists and it's manually tracked day-to-day - the
+  // Xero-synced balance (bankBalance) lags behind that, so runway prefers
+  // the manual figure once one's been entered, same fallback as
+  // BankBalanceCard below.
+  const runwayCashBalance = manualBankBalance.set ? manualBankBalance.balance : bankBalance;
+  const runwayMonths = forecastIsLive ? (monthlyOpex > 0 ? runwayCashBalance / monthlyOpex : Infinity) : simpleCashRunwayMonths();
   const confirmedRevenue = forecastIsLive ? liveConfirmedFutureRevenue(liveForecast.data!.jobRows) : confirmedFutureRevenue();
   const weightedPipeline = forecastIsLive ? liveWeightedPipelineValue(liveForecast.data!.opportunities) : weightedPipelineValue();
 
@@ -229,7 +234,12 @@ export default async function DashboardPage() {
         {currentMonthRevenue !== null && (
           <StatCard label="Current month income" value={formatAUD(currentMonthRevenue, { compact: true })} sub="Xero AR invoices, month to date" href="/expenses" />
         )}
-        <StatCard label="Cash runway" value={runwayMonths === Infinity ? "N/A" : `${runwayMonths.toFixed(1)} mo`} sub="Cash / avg monthly burn" href="/expenses" />
+        <StatCard
+          label="Cash runway"
+          value={runwayMonths === Infinity ? "N/A" : `${runwayMonths.toFixed(1)} mo`}
+          sub={manualBankBalance.set ? "Manual balance / avg monthly burn" : "Cash / avg monthly burn"}
+          href="/expenses"
+        />
         <StatCard label="Confirmed future revenue" value={formatAUD(confirmedRevenue, { compact: true })} sub="Remaining active-job revenue" href="/jobs" />
         <StatCard label="Weighted pipeline" value={formatAUD(weightedPipeline, { compact: true })} sub="GHL, probability-weighted" href="/pipeline" tone="default" />
         <StatCard label="Active jobs" value={String(forecastIsLive ? liveForecast.data!.jobRows.length : activeJobs.length)} sub="In progress or on hold" href="/jobs" />
