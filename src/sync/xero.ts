@@ -1,7 +1,7 @@
 import "server-only";
 import { and, eq, gt, isNull, notInArray, sql } from "drizzle-orm";
 import { db } from "@/db/client";
-import { bankAccounts, bills, customers, financialSummary, invoices, jobs, operatingExpenses, suppliers, syncErrors, syncRuns } from "@/db/schema";
+import { bankAccounts, bills, customers, financialSummary, invoices, jobs, operatingExpenses, purchaseOrders, suppliers, syncErrors, syncRuns } from "@/db/schema";
 import {
   getBankAccounts,
   getBankSummary,
@@ -76,6 +76,25 @@ function resolveJobNumber(item: XeroInvoice): string | null {
   return extractJobNumberFromTracking(item) ?? extractJobNumber(item.InvoiceNumber) ?? extractJobNumber(item.Reference);
 }
 
+// Requires an explicit "PO" prefix (PO#2045, PO 2045) and is never run on
+// InvoiceNumber, so a supplier invoice number like INV-1650 can't be mistaken
+// for Buildxact PO #1650.
+const PO_REF_RE = /\bPO\s*#?\s*(\d{3,5})\b/i;
+
+/** Last-resort link for a bill with no job code at all: a PO reference in a
+ * line description or Reference maps to the Buildxact job that owns that PO
+ * (order numbers are unique per job). Bills only - AR invoices don't carry
+ * supplier PO numbers. */
+function resolveJobNumberFromPoRef(bill: XeroInvoice, jobNumberByPo: Map<number, string>): string | null {
+  const texts = [bill.Reference, ...(bill.LineItems ?? []).map((l) => l.Description)];
+  for (const text of texts) {
+    const match = text ? PO_REF_RE.exec(text) : null;
+    const jobNumber = match ? jobNumberByPo.get(Number(match[1])) : undefined;
+    if (jobNumber) return jobNumber;
+  }
+  return null;
+}
+
 export async function syncXero(): Promise<XeroSyncResult> {
   const startedAt = Date.now();
   const [run] = await db.insert(syncRuns).values({ source: "xero", status: "running" }).returning();
@@ -93,6 +112,11 @@ export async function syncXero(): Promise<XeroSyncResult> {
     // Job number -> internal job id, for the invoice/bill linking heuristic.
     const jobRows = await db.select({ id: jobs.id, jobNumber: jobs.jobNumber }).from(jobs);
     const jobIdByNumber = new Map(jobRows.map((j) => [j.jobNumber.toUpperCase(), j.id]));
+    const poRows = await db
+      .select({ orderNumber: purchaseOrders.orderNumber, jobNumber: jobs.jobNumber })
+      .from(purchaseOrders)
+      .innerJoin(jobs, eq(jobs.id, purchaseOrders.jobId));
+    const jobNumberByPo = new Map(poRows.map((p) => [p.orderNumber, p.jobNumber.toUpperCase()]));
 
     // --- Bank accounts + balances (small - always a full sync) -----------
     try {
@@ -150,7 +174,7 @@ export async function syncXero(): Promise<XeroSyncResult> {
     // --- AP bills (outstanding only - see accounting.ts scope note) -------
     try {
       const apBills = await getOutstandingBills();
-      const { imported, updated, reconciled } = await upsertBills(apBills, supplierIdBySourceId, jobIdByNumber);
+      const { imported, updated, reconciled } = await upsertBills(apBills, supplierIdBySourceId, jobIdByNumber, jobNumberByPo);
       recordsImported += imported;
       recordsUpdated += updated + reconciled;
     } catch (err) {
@@ -170,7 +194,7 @@ export async function syncXero(): Promise<XeroSyncResult> {
     // extra Xero API calls) - cheap since the null-jobId set is small, and
     // self-healing for any future matching improvement too.
     try {
-      const relinked = await relinkOrphanedJobRecords(jobIdByNumber);
+      const relinked = await relinkOrphanedJobRecords(jobIdByNumber, jobNumberByPo);
       recordsUpdated += relinked;
     } catch (err) {
       await logError(undefined, `Relink orphaned records: ${err instanceof Error ? err.message : String(err)}`);
@@ -362,7 +386,7 @@ async function upsertInvoices(arInvoices: XeroInvoice[], customerIdBySourceId: M
   return { imported, updated };
 }
 
-async function upsertBills(apBills: XeroInvoice[], supplierIdBySourceId: Map<string, string>, jobIdByNumber: Map<string, string>) {
+async function upsertBills(apBills: XeroInvoice[], supplierIdBySourceId: Map<string, string>, jobIdByNumber: Map<string, string>, jobNumberByPo: Map<number, string>) {
   let imported = 0;
   let updated = 0;
 
@@ -372,7 +396,7 @@ async function upsertBills(apBills: XeroInvoice[], supplierIdBySourceId: Map<str
       .insert(bills)
       .values(
         batch.map((bill) => {
-          const jobNumber = resolveJobNumber(bill);
+          const jobNumber = resolveJobNumber(bill) ?? resolveJobNumberFromPoRef(bill, jobNumberByPo);
           return {
             source: "xero",
             sourceId: bill.InvoiceID,
@@ -433,7 +457,7 @@ async function upsertBills(apBills: XeroInvoice[], supplierIdBySourceId: Map<str
   return { imported, updated, reconciled };
 }
 
-async function relinkOrphanedJobRecords(jobIdByNumber: Map<string, string>): Promise<number> {
+async function relinkOrphanedJobRecords(jobIdByNumber: Map<string, string>, jobNumberByPo: Map<number, string>): Promise<number> {
   let relinked = 0;
 
   const orphanBills = await db
@@ -441,7 +465,7 @@ async function relinkOrphanedJobRecords(jobIdByNumber: Map<string, string>): Pro
     .from(bills)
     .where(and(eq(bills.source, "xero"), isNull(bills.jobId)));
   for (const row of orphanBills) {
-    const jobNumber = resolveJobNumber(row.raw as XeroInvoice);
+    const jobNumber = resolveJobNumber(row.raw as XeroInvoice) ?? resolveJobNumberFromPoRef(row.raw as XeroInvoice, jobNumberByPo);
     const jobId = jobNumber ? jobIdByNumber.get(jobNumber) : undefined;
     if (!jobId) continue;
     await db.update(bills).set({ jobId, updatedAt: new Date() }).where(eq(bills.id, row.id));
