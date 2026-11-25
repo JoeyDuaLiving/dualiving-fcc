@@ -5,6 +5,7 @@ import { bills, invoices, jobInvoicePayments, jobManualLabourCosts, jobs, purcha
 import type { BuildxactJob, BuildxactJobInvoice, BuildxactPurchaseOrder } from "@/integrations/buildxact/types";
 import type { XeroInvoice } from "@/integrations/xero/types";
 import type { ManualStageRow } from "@/lib/manual-stages-source";
+import { loadPoReconcile, type PoReconcileData } from "@/lib/po-reconcile-source";
 import { STOCK_JOB_NUMBER } from "@/lib/stock-source";
 import type { Job, JobStatus } from "@/types";
 
@@ -370,6 +371,10 @@ export interface LiveJobDetail {
   // someone sets it for this job, at which point it replaces the PO-
   // keyword-matching guess the job detail page otherwise falls back to.
   manualLabourCost: { amount: number; note: string | null; updatedAt: string } | null;
+  // Our own PO <-> Xero bill reconciliation (comparison only - never feeds
+  // the WIP numbers). Null if it couldn't be loaded, so the rest of the job
+  // page still renders.
+  poReconcile: PoReconcileData | null;
 }
 
 export interface LiveJobDetailResult {
@@ -410,6 +415,8 @@ export async function loadLiveJobDetail(jobId: string): Promise<LiveJobDetailRes
     // billed (see loadLiveActiveJobsCashPositions above for the same fix).
     const amountInvoicedToDate = invRows.filter((r) => r.status !== "Pending").reduce((s, r) => s + r.totalIncTax, 0);
     const cashReceived = invRows.filter((r) => r.status === "Received").reduce((s, r) => s + r.totalIncTax, 0);
+
+    const poReconcile = await loadPoReconcile(jobRow.id).catch(() => null);
 
     const rawJob = jobRow.raw as BuildxactJob | null;
     const estimatedCost = rawJob?.estimatedTotalIncTax ? rawJob.estimatedTotalIncTax : null;
@@ -460,6 +467,7 @@ export async function loadLiveJobDetail(jobId: string): Promise<LiveJobDetailRes
         xeroInvoices: xeroInvoicesOut,
         estimatedCost,
         manualLabourCost,
+        poReconcile,
       },
       source: "live",
     };

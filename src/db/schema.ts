@@ -17,6 +17,7 @@ import { relations } from "drizzle-orm";
 import {
   boolean,
   doublePrecision,
+  index,
   integer,
   jsonb,
   pgTable,
@@ -348,6 +349,41 @@ export const jobManualLabourCosts = pgTable(
     updatedAt: timestamp("updated_at").notNull().defaultNow(),
   },
   (t) => [uniqueIndex("job_manual_labour_costs_job_idx").on(t.jobId)]
+);
+
+// Our own PO <-> Xero bill reconciliation, kept out of the sync tables so it
+// survives every resync. Keyed on the source systems' own ids (Buildxact PO
+// guid, Xero bill id) rather than our row ids, so a link still holds if a
+// synced row is ever recreated. A bill can belong to only one PO. Manual
+// links override the automatic "PO 1234" reference match on the job page.
+export const poBillLinks = pgTable(
+  "po_bill_links",
+  {
+    id: id(),
+    jobId: text("job_id")
+      .notNull()
+      .references(() => jobs.id, { onDelete: "cascade" }),
+    poSourceId: text("po_source_id").notNull(),
+    billSourceId: text("bill_source_id").notNull(),
+    createdAt: timestamp("created_at").notNull().defaultNow(),
+  },
+  (t) => [uniqueIndex("po_bill_links_bill_idx").on(t.billSourceId), index("po_bill_links_job_idx").on(t.jobId)]
+);
+
+// Per-PO reconciled flag and note - what the team has signed off as matching.
+export const poReconciliations = pgTable(
+  "po_reconciliations",
+  {
+    id: id(),
+    jobId: text("job_id")
+      .notNull()
+      .references(() => jobs.id, { onDelete: "cascade" }),
+    poSourceId: text("po_source_id").notNull(),
+    reconciled: boolean("reconciled").notNull().default(false),
+    note: text("note"),
+    updatedAt: timestamp("updated_at").notNull().defaultNow(),
+  },
+  (t) => [uniqueIndex("po_reconciliations_po_idx").on(t.poSourceId), index("po_reconciliations_job_idx").on(t.jobId)]
 );
 
 // Named jobInvoicePayments (not "invoices") because this is Buildxact's own

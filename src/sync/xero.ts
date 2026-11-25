@@ -16,6 +16,7 @@ import {
 } from "@/integrations/xero/accounting";
 import { parseXeroDate } from "@/integrations/xero/mappers";
 import { classifyOpexCategory } from "@/lib/opex-classification";
+import { PO_REF_RE } from "@/lib/po-reference";
 import { nowInAEST } from "@/lib/format";
 import type { XeroAccount, XeroBankTransaction, XeroContact, XeroInvoice } from "@/integrations/xero/types";
 
@@ -75,11 +76,6 @@ function extractJobNumberFromTracking(item: XeroInvoice): string | null {
 function resolveJobNumber(item: XeroInvoice): string | null {
   return extractJobNumberFromTracking(item) ?? extractJobNumber(item.InvoiceNumber) ?? extractJobNumber(item.Reference);
 }
-
-// Requires an explicit "PO" prefix (PO#2045, PO 2045) and is never run on
-// InvoiceNumber, so a supplier invoice number like INV-1650 can't be mistaken
-// for Buildxact PO #1650.
-const PO_REF_RE = /\bPO\s*#?\s*(\d{3,5})\b/i;
 
 /** Last-resort link for a bill with no job code at all: a PO reference in a
  * line description or Reference maps to the Buildxact job that owns that PO

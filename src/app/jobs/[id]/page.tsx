@@ -8,6 +8,8 @@ import { formatAUD, formatAUDSigned, formatDateAU } from "@/lib/format";
 import { loadLiveJobDetail, type LiveJobDetail } from "@/lib/jobs-source";
 import type { BuildxactPurchaseOrder } from "@/integrations/buildxact/types";
 import { ManualLabourCostEditor } from "@/components/jobs/ManualLabourCostEditor";
+import { PurchaseOrdersTable } from "@/components/jobs/PurchaseOrdersTable";
+import { PoReconcileCard } from "@/components/jobs/PoReconcileCard";
 
 export default async function JobDetailPage({ params }: { params: Promise<{ id: string }> }) {
   const { id } = await params;
@@ -205,40 +207,17 @@ function LiveJobDetailView({ detail }: { detail: LiveJobDetail }) {
 
       <div className="grid lg:grid-cols-2 gap-6 mb-6">
         <Card title="Purchase orders" action={<span className="text-xs text-slate-500">{purchaseOrders.length}</span>}>
-          <table className="w-full text-sm">
-            <thead>
-              <tr className="text-left text-xs text-slate-500 border-b border-slate-800">
-                <th className="pb-2 font-medium">Order</th>
-                <th className="pb-2 font-medium">Description</th>
-                <th className="pb-2 font-medium text-right">Total</th>
-                <th className="pb-2 font-medium text-right">Status</th>
-              </tr>
-            </thead>
-            <tbody className="divide-y divide-slate-800/60">
-              {purchaseOrders.map((po) => (
-                <tr key={po.purchaseOrderId}>
-                  <td className="py-2 text-slate-300">#{po.orderNumber}</td>
-                  <td className="py-2 text-slate-400">
-                    {po.description}
-                    {isLabourPO(po) && (
-                      <span className="ml-2">
-                        <StatusPill tone="warn">Labour</StatusPill>
-                      </span>
-                    )}
-                  </td>
-                  <td className="py-2 text-right tabular-nums text-slate-300">{formatAUD(po.orderTotalIncTax)}</td>
-                  <td className="py-2 text-right">
-                    <StatusPill tone={po.isCompleted ? "good" : "neutral"}>{po.orderStatus}</StatusPill>
-                  </td>
-                </tr>
-              ))}
-              {purchaseOrders.length === 0 && (
-                <tr>
-                  <td colSpan={4} className="py-4 text-center text-slate-500">No purchase orders recorded.</td>
-                </tr>
-              )}
-            </tbody>
-          </table>
+          <PurchaseOrdersTable
+            rows={purchaseOrders.map((po) => ({
+              purchaseOrderId: po.purchaseOrderId,
+              orderNumber: po.orderNumber,
+              description: po.description ?? "",
+              total: po.orderTotalIncTax,
+              status: po.orderStatus,
+              isCompleted: po.isCompleted,
+              isLabour: isLabourPO(po),
+            }))}
+          />
         </Card>
 
         <Card title="Xero bills (matched)" action={<span className="text-xs text-slate-500">{xeroBills.length} &middot; {formatAUD(xeroBillsTotal, { compact: true })}</span>}>
@@ -271,6 +250,8 @@ function LiveJobDetailView({ detail }: { detail: LiveJobDetail }) {
           </table>
         </Card>
       </div>
+
+      {detail.poReconcile && <PoReconcileCard jobSourceId={job.id} data={detail.poReconcile} />}
 
       <Card
         title="Cost breakdown"
