@@ -50,6 +50,8 @@ export interface XeroInvoice {
   AmountPaid: number;
   AmountCredited: number;
   Total?: number;
+  /** "Exclusive" (LineAmount before GST), "Inclusive" (LineAmount includes GST) or "NoTax". */
+  LineAmountTypes?: "Exclusive" | "Inclusive" | "NoTax" | string;
   SubTotal?: number;
   TotalTax?: number;
   Payments?: XeroPayment[];
@@ -68,6 +70,8 @@ export interface XeroLineItem {
   Description?: string;
   AccountCode?: string;
   LineAmount: number;
+  /** GST on this line. LineAmount excludes it unless the bill's LineAmountTypes is "Inclusive". */
+  TaxAmount?: number;
   Tracking?: XeroTracking[];
 }
 

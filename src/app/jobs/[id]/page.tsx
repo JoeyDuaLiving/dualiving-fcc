@@ -226,7 +226,7 @@ function LiveJobDetailView({ detail }: { detail: LiveJobDetail }) {
               <tr className="text-left text-xs text-slate-500 border-b border-slate-800">
                 <th className="pb-2 font-medium">Bill</th>
                 <th className="pb-2 font-medium">Supplier</th>
-                <th className="pb-2 font-medium text-right">Amount</th>
+                <th className="pb-2 font-medium text-right">Amount (inc GST)</th>
                 <th className="pb-2 font-medium text-right">Date</th>
                 <th className="pb-2 font-medium text-right">Status</th>
               </tr>
@@ -236,7 +236,10 @@ function LiveJobDetailView({ detail }: { detail: LiveJobDetail }) {
                 <tr key={b.id}>
                   <td className="py-2 text-slate-300">{b.number}</td>
                   <td className="py-2 text-slate-400">{b.party}</td>
-                  <td className="py-2 text-right tabular-nums text-slate-300">{formatAUD(b.amount)}</td>
+                  <td className="py-2 text-right tabular-nums text-slate-300">
+                    {formatAUD(b.amount)}
+                    {b.billTotal !== undefined && <span className="block text-[11px] text-slate-500">share of {formatAUD(b.billTotal)} bill</span>}
+                  </td>
                   <td className="py-2 text-right text-slate-400 whitespace-nowrap">{b.date ? formatDateAU(b.date) : "—"}</td>
                   <td className="py-2 text-right text-slate-400">{b.status}</td>
                 </tr>

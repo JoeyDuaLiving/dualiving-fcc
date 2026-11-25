@@ -44,7 +44,7 @@ function compare(a: PurchaseOrderRowData, b: PurchaseOrderRowData, key: SortKey)
 const COLUMNS: { key: Exclude<SortKey, "default">; label: string; align: "left" | "right" }[] = [
   { key: "order", label: "Order", align: "left" },
   { key: "description", label: "Description", align: "left" },
-  { key: "total", label: "Total", align: "right" },
+  { key: "total", label: "Total (inc GST)", align: "right" },
   { key: "status", label: "Status", align: "right" },
 ];
 

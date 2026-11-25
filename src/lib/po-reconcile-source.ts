@@ -1,7 +1,7 @@
 import "server-only";
 import { and, desc, eq, inArray, isNull, notInArray } from "drizzle-orm";
 import { db } from "@/db/client";
-import { bills, poBillLinks, poReconciliations, purchaseOrders } from "@/db/schema";
+import { billJobAllocations, bills, poBillLinks, poReconciliations, purchaseOrders } from "@/db/schema";
 import type { XeroInvoice } from "@/integrations/xero/types";
 import { poNumbersReferencedByBill } from "@/lib/po-reference";
 import { suggestMatches, type SuggestionTier } from "@/lib/po-suggest";
@@ -91,10 +91,13 @@ function toBill(row: typeof bills.$inferSelect): Omit<PoReconcileBill, "how"> & 
 export async function loadPoReconcile(jobDbId: string): Promise<PoReconcileData> {
   const [poRows, jobBillRows, linkRows, statusRows] = await Promise.all([
     db.select().from(purchaseOrders).where(eq(purchaseOrders.jobId, jobDbId)),
+    // This job's share of each bill: a bill split across jobs only counts its own part here.
     db
-      .select()
-      .from(bills)
-      .where(and(eq(bills.jobId, jobDbId), eq(bills.source, "xero"), notInArray(bills.status, IGNORED_BILL_STATUSES))),
+      .select({ bill: bills, allocated: billJobAllocations.amount })
+      .from(billJobAllocations)
+      .innerJoin(bills, eq(bills.id, billJobAllocations.billId))
+      .where(and(eq(billJobAllocations.jobId, jobDbId), eq(bills.source, "xero"), notInArray(bills.status, IGNORED_BILL_STATUSES)))
+      .then((rows) => rows.map((r) => ({ ...r.bill, amount: r.allocated }))),
     db.select().from(poBillLinks).where(eq(poBillLinks.jobId, jobDbId)),
     db.select().from(poReconciliations).where(eq(poReconciliations.jobId, jobDbId)),
   ]);
@@ -132,7 +135,7 @@ export async function loadPoReconcile(jobDbId: string): Promise<PoReconcileData>
       const list = billsByPo.get(poSourceId) ?? [];
       list.push({ ...toBill(row), how });
       billsByPo.set(poSourceId, list);
-    } else if (row.jobId === jobDbId) {
+    } else if (jobBillIds.has(row.sourceId)) {
       unlinked.push({ ...toBill(row), scope: "job" });
     }
   }

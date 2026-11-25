@@ -1,7 +1,7 @@
 import "server-only";
 import { and, desc, eq, inArray, ne } from "drizzle-orm";
 import { db } from "@/db/client";
-import { bills, invoices, jobInvoicePayments, jobManualLabourCosts, jobs, purchaseOrders, syncRuns } from "@/db/schema";
+import { billJobAllocations, bills, invoices, jobInvoicePayments, jobManualLabourCosts, jobs, purchaseOrders, syncRuns } from "@/db/schema";
 import type { BuildxactJob, BuildxactJobInvoice, BuildxactPurchaseOrder } from "@/integrations/buildxact/types";
 import type { XeroInvoice } from "@/integrations/xero/types";
 import type { ManualStageRow } from "@/lib/manual-stages-source";
@@ -177,10 +177,12 @@ export async function loadLiveJobsList(): Promise<LiveJobsListResult> {
         .select({ jobId: jobInvoicePayments.jobId, totalIncTax: jobInvoicePayments.totalIncTax })
         .from(jobInvoicePayments)
         .where(and(inArray(jobInvoicePayments.jobId, jobRowIds), eq(jobInvoicePayments.status, "Received"))),
+      // Each job's own share of a bill, so a bill coded to several jobs isn't counted in full on each.
       db
-        .select({ jobId: bills.jobId, amount: bills.amount })
-        .from(bills)
-        .where(and(inArray(bills.jobId, jobRowIds), eq(bills.source, "xero"))),
+        .select({ jobId: billJobAllocations.jobId, amount: billJobAllocations.amount })
+        .from(billJobAllocations)
+        .innerJoin(bills, eq(bills.id, billJobAllocations.billId))
+        .where(and(inArray(billJobAllocations.jobId, jobRowIds), eq(bills.source, "xero"))),
       db
         .select({ jobId: invoices.jobId, amount: invoices.amount })
         .from(invoices)
@@ -331,7 +333,10 @@ export interface XeroMatchedRecord {
   id: string;
   number: string;
   party: string;
+  /** This job's share of the bill (inc GST); the whole bill unless it is split across jobs. */
   amount: number;
+  /** The full bill total, only present when the bill is split across several jobs. */
+  billTotal?: number;
   date: string;
   status: string;
 }
@@ -399,7 +404,12 @@ export async function loadLiveJobDetail(jobId: string): Promise<LiveJobDetailRes
     const [poRows, invRows, xeroBillRows, xeroInvoiceRows, labourRows] = await Promise.all([
       db.select().from(purchaseOrders).where(eq(purchaseOrders.jobId, jobRow.id)),
       db.select().from(jobInvoicePayments).where(eq(jobInvoicePayments.jobId, jobRow.id)),
-      db.select().from(bills).where(and(eq(bills.jobId, jobRow.id), eq(bills.source, "xero"))),
+      // Through the allocation so a bill split across jobs shows only this job's share.
+      db
+        .select({ bill: bills, allocated: billJobAllocations.amount })
+        .from(billJobAllocations)
+        .innerJoin(bills, eq(bills.id, billJobAllocations.billId))
+        .where(and(eq(billJobAllocations.jobId, jobRow.id), eq(bills.source, "xero"))),
       db.select().from(invoices).where(and(eq(invoices.jobId, jobRow.id), eq(invoices.source, "xero"))),
       db.select().from(jobManualLabourCosts).where(eq(jobManualLabourCosts.jobId, jobRow.id)),
     ]);
@@ -430,11 +440,13 @@ export async function loadLiveJobDetail(jobId: string): Promise<LiveJobDetailRes
       isComplete: jobRow.status === "complete",
     });
 
-    const xeroBillsOut: XeroMatchedRecord[] = xeroBillRows.map((b) => ({
+    const xeroBillsOut: XeroMatchedRecord[] = xeroBillRows.map(({ bill: b, allocated }) => ({
       id: b.id,
       number: b.billNumber,
       party: (b.raw as XeroInvoice)?.Contact?.Name ?? "Unknown",
-      amount: b.amount,
+      amount: allocated,
+      // Only set when the bill is shared with other jobs, so the page can say "of $X".
+      billTotal: Math.abs(allocated - b.amount) > 0.005 ? b.amount : undefined,
       date: b.billDate ? b.billDate.toISOString().slice(0, 10) : "",
       status: b.status,
     }));

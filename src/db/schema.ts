@@ -559,6 +559,27 @@ export const bills = pgTable(
   (t) => [uniqueIndex("bills_source_idx").on(t.source, t.sourceId)]
 );
 
+// How much of each Xero bill belongs to each job. A bill coded to one job has
+// one row (its full total); a bill whose line items are tagged to several job
+// codes is split by line, so each job carries only its own share instead of
+// the whole bill landing on whichever job code the sync saw first. Amounts are
+// inc GST and always add back to the bill total. bills.jobId stays as the
+// bill's main job (largest share) for the orphan/relink logic.
+export const billJobAllocations = pgTable(
+  "bill_job_allocations",
+  {
+    id: id(),
+    billId: text("bill_id")
+      .notNull()
+      .references(() => bills.id, { onDelete: "cascade" }),
+    jobId: text("job_id")
+      .notNull()
+      .references(() => jobs.id, { onDelete: "cascade" }),
+    amount: doublePrecision("amount").notNull(),
+  },
+  (t) => [uniqueIndex("bill_job_allocations_bill_job_idx").on(t.billId, t.jobId), index("bill_job_allocations_job_idx").on(t.jobId)]
+);
+
 export const operatingExpenses = pgTable(
   "operating_expenses",
   {

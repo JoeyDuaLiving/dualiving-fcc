@@ -1,7 +1,7 @@
 import "server-only";
 import { eq } from "drizzle-orm";
 import { db } from "@/db/client";
-import { bills, invoices, jobs } from "@/db/schema";
+import { billJobAllocations, bills, invoices, jobs } from "@/db/schema";
 import type { XeroInvoice } from "@/integrations/xero/types";
 
 // ---------------------------------------------------------------------------
@@ -106,15 +106,21 @@ export async function loadReconciliation(): Promise<ReconciliationResult> {
     }
     const activeJobIds = new Set(activeJobs.map((j) => j.id));
 
-    const [billRows, invoiceRows] = await Promise.all([
+    const [billRows, invoiceRows, allocationRows] = await Promise.all([
       db.select().from(bills).where(eq(bills.source, "xero")),
       db.select().from(invoices).where(eq(invoices.source, "xero")),
+      // Each job's own share of a bill, so a bill coded to several jobs isn't counted in full on each.
+      db
+        .select({ jobId: billJobAllocations.jobId, amount: billJobAllocations.amount })
+        .from(billJobAllocations)
+        .innerJoin(bills, eq(bills.id, billJobAllocations.billId))
+        .where(eq(bills.source, "xero")),
     ]);
 
     const billsByJobId = new Map<string, number>();
-    for (const b of billRows) {
-      if (!b.jobId || !activeJobIds.has(b.jobId)) continue;
-      billsByJobId.set(b.jobId, (billsByJobId.get(b.jobId) ?? 0) + b.amount);
+    for (const a of allocationRows) {
+      if (!activeJobIds.has(a.jobId)) continue;
+      billsByJobId.set(a.jobId, (billsByJobId.get(a.jobId) ?? 0) + a.amount);
     }
     const invoicesByJobId = new Map<string, number>();
     for (const inv of invoiceRows) {

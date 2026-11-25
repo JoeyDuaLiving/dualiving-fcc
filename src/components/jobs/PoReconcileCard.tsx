@@ -326,10 +326,10 @@ export function PoReconcileCard({ jobSourceId, data }: { jobSourceId: string; da
           <thead>
             <tr className="text-left text-xs text-slate-500 border-b border-slate-800">
               <th className="pb-2 pr-3 font-medium">Purchase order</th>
-              <th className="pb-2 pr-3 font-medium text-right">PO total</th>
-              <th className="pb-2 pr-3 font-medium text-right">Invoiced in BX</th>
-              <th className="pb-2 pr-3 font-medium">Xero bills</th>
-              <th className="pb-2 pr-3 font-medium text-right">Xero total</th>
+              <th className="pb-2 pr-3 font-medium text-right">PO total (inc GST)</th>
+              <th className="pb-2 pr-3 font-medium text-right">Invoiced in BX (inc GST)</th>
+              <th className="pb-2 pr-3 font-medium">Xero bills (inc GST)</th>
+              <th className="pb-2 pr-3 font-medium text-right">Xero total (inc GST)</th>
               <th className="pb-2 pr-3 font-medium text-right">Variance</th>
               <th className="pb-2 font-medium">Sign-off</th>
             </tr>

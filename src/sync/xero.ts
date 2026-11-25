@@ -1,7 +1,7 @@
 import "server-only";
-import { and, eq, gt, isNull, notInArray, sql } from "drizzle-orm";
+import { and, eq, gt, inArray, isNull, notInArray, sql } from "drizzle-orm";
 import { db } from "@/db/client";
-import { bankAccounts, bills, customers, financialSummary, invoices, jobs, operatingExpenses, purchaseOrders, suppliers, syncErrors, syncRuns } from "@/db/schema";
+import { bankAccounts, billJobAllocations, bills, customers, financialSummary, invoices, jobs, operatingExpenses, purchaseOrders, suppliers, syncErrors, syncRuns } from "@/db/schema";
 import {
   getBankAccounts,
   getBankSummary,
@@ -17,6 +17,7 @@ import {
 import { parseXeroDate } from "@/integrations/xero/mappers";
 import { classifyOpexCategory } from "@/lib/opex-classification";
 import { PO_REF_RE } from "@/lib/po-reference";
+import { allocateBillToJobs, extractJobNumber, type BillAllocation } from "@/lib/bill-allocation";
 import { nowInAEST } from "@/lib/format";
 import type { XeroAccount, XeroBankTransaction, XeroContact, XeroInvoice } from "@/integrations/xero/types";
 
@@ -45,14 +46,6 @@ export interface XeroSyncResult {
   recordsUpdated: number;
   errorCount: number;
   durationMs: number;
-}
-
-const JOB_NUMBER_RE = /\bJ\d{3,5}\b/i;
-
-function extractJobNumber(text: string | undefined): string | null {
-  if (!text) return null;
-  const match = JOB_NUMBER_RE.exec(text);
-  return match ? match[0].toUpperCase() : null;
 }
 
 /** Confirmed live 2026-08-28: this tenant has just started using a "Job
@@ -382,22 +375,41 @@ async function upsertInvoices(arInvoices: XeroInvoice[], customerIdBySourceId: M
   return { imported, updated };
 }
 
+/** Splits a bill across the jobs its lines are coded to; falls back to the job it resolves to as a whole
+ * (invoice number, reference or PO reference) when no line carries a known job code. */
+function allocateBill(bill: XeroInvoice, jobIdByNumber: Map<string, string>, jobNumberByPo: Map<number, string>): BillAllocation[] {
+  const fallbackNumber = resolveJobNumber(bill) ?? resolveJobNumberFromPoRef(bill, jobNumberByPo);
+  const fallbackJobId = fallbackNumber ? (jobIdByNumber.get(fallbackNumber) ?? null) : null;
+  return allocateBillToJobs(bill, jobIdByNumber, fallbackJobId);
+}
+
+/** Replaces each bill's saved job split with the freshly computed one. */
+async function replaceBillAllocations(entries: { billId: string; allocations: BillAllocation[] }[]) {
+  if (entries.length === 0) return;
+  await db.delete(billJobAllocations).where(inArray(billJobAllocations.billId, entries.map((e) => e.billId)));
+  const rows = entries.flatMap((e) => e.allocations.map((a) => ({ billId: e.billId, jobId: a.jobId, amount: a.amount })));
+  if (rows.length > 0) await db.insert(billJobAllocations).values(rows);
+}
+
 async function upsertBills(apBills: XeroInvoice[], supplierIdBySourceId: Map<string, string>, jobIdByNumber: Map<string, string>, jobNumberByPo: Map<number, string>) {
   let imported = 0;
   let updated = 0;
 
   for (let i = 0; i < apBills.length; i += BATCH_SIZE) {
     const batch = apBills.slice(i, i + BATCH_SIZE);
+    const allocationsBySourceId = new Map<string, BillAllocation[]>();
     const rows = await db
       .insert(bills)
       .values(
         batch.map((bill) => {
-          const jobNumber = resolveJobNumber(bill) ?? resolveJobNumberFromPoRef(bill, jobNumberByPo);
+          const allocations = allocateBill(bill, jobIdByNumber, jobNumberByPo);
+          allocationsBySourceId.set(bill.InvoiceID, allocations);
           return {
             source: "xero",
             sourceId: bill.InvoiceID,
             supplierId: supplierIdBySourceId.get(bill.Contact.ContactID) ?? null,
-            jobId: jobNumber ? (jobIdByNumber.get(jobNumber) ?? null) : null,
+            // The bill's main job (largest share); the full split lives in bill_job_allocations.
+            jobId: allocations[0]?.jobId ?? null,
             billNumber: bill.InvoiceNumber,
             amount: bill.Total ?? 0,
             amountPaid: bill.AmountPaid,
@@ -423,11 +435,12 @@ async function upsertBills(apBills: XeroInvoice[], supplierIdBySourceId: Map<str
           updatedAt: new Date(),
         },
       })
-      .returning({ wasNew: sql<boolean>`(xmax = 0)` });
+      .returning({ id: bills.id, sourceId: bills.sourceId, wasNew: sql<boolean>`(xmax = 0)` });
     for (const r of rows) {
       if (r.wasNew) imported++;
       else updated++;
     }
+    await replaceBillAllocations(rows.map((r) => ({ billId: r.id, allocations: allocationsBySourceId.get(r.sourceId) ?? [] })));
   }
 
   // Reconcile bills that dropped off Xero's outstanding-bills feed.
@@ -461,10 +474,10 @@ async function relinkOrphanedJobRecords(jobIdByNumber: Map<string, string>, jobN
     .from(bills)
     .where(and(eq(bills.source, "xero"), isNull(bills.jobId)));
   for (const row of orphanBills) {
-    const jobNumber = resolveJobNumber(row.raw as XeroInvoice) ?? resolveJobNumberFromPoRef(row.raw as XeroInvoice, jobNumberByPo);
-    const jobId = jobNumber ? jobIdByNumber.get(jobNumber) : undefined;
-    if (!jobId) continue;
-    await db.update(bills).set({ jobId, updatedAt: new Date() }).where(eq(bills.id, row.id));
+    const allocations = allocateBill(row.raw as XeroInvoice, jobIdByNumber, jobNumberByPo);
+    if (allocations.length === 0) continue;
+    await db.update(bills).set({ jobId: allocations[0].jobId, updatedAt: new Date() }).where(eq(bills.id, row.id));
+    await replaceBillAllocations([{ billId: row.id, allocations }]);
     relinked++;
   }
 
