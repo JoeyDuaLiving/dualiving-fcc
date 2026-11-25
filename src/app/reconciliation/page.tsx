@@ -6,6 +6,8 @@ import { StatusPill } from "@/components/shared/Badges";
 import { formatAUD, formatDateAU } from "@/lib/format";
 import { jobMappings, reconciliationFlags } from "@/lib/mock-data";
 import { loadReconciliation } from "@/lib/reconciliation-source";
+import { loadPoReconcileReport } from "@/lib/po-reconcile-source";
+import { PoReconcileReport } from "@/components/reconciliation/PoReconcileReport";
 
 export const dynamic = "force-dynamic";
 
@@ -19,6 +21,8 @@ const TYPE_LABEL: Record<string, string> = {
 export default async function ReconciliationPage() {
   const live = await loadReconciliation();
   const isLive = live.source === "live";
+  // A failure here shouldn't take the rest of the page down.
+  const poReport = isLive ? await loadPoReconcileReport().catch(() => null) : null;
 
   if (isLive) {
     const flaggedRows = live.rows.filter((r) => r.costFlag || r.revenueFlag);
@@ -40,6 +44,8 @@ export default async function ReconciliationPage() {
           <StatCard label="Critical (&gt;$5k)" value={String(criticalCount)} tone={criticalCount > 0 ? "bad" : "good"} />
           <StatCard label="Orphaned Xero records" value={String(live.orphanedRecords.length)} tone={live.orphanedRecords.length > 0 ? "warn" : "good"} />
         </div>
+
+        {poReport && <PoReconcileReport report={poReport} />}
 
         <Card title="Flagged jobs" className="mb-6">
           {flaggedRows.length === 0 ? (
