@@ -426,7 +426,7 @@ export async function loadLiveJobDetail(jobId: string): Promise<LiveJobDetailRes
     const amountInvoicedToDate = invRows.filter((r) => r.status !== "Pending").reduce((s, r) => s + r.totalIncTax, 0);
     const cashReceived = invRows.filter((r) => r.status === "Received").reduce((s, r) => s + r.totalIncTax, 0);
 
-    const poReconcile = await loadPoReconcile(jobRow.id).catch(() => null);
+    const poReconcile = await loadPoReconcile(jobRow.id, jobRow.jobNumber === STOCK_JOB_NUMBER).catch(() => null);
 
     const rawJob = jobRow.raw as BuildxactJob | null;
     const estimatedCost = rawJob?.estimatedTotalIncTax ? rawJob.estimatedTotalIncTax : null;

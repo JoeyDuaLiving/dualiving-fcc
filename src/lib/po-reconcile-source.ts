@@ -5,6 +5,7 @@ import { billJobAllocations, bills, poBillLinks, poReconciliations, purchaseOrde
 import type { XeroInvoice } from "@/integrations/xero/types";
 import { poNumbersReferencedByBill } from "@/lib/po-reference";
 import { suggestMatches, type SuggestionTier } from "@/lib/po-suggest";
+import { isStockPoDescription } from "@/lib/stock-source";
 
 // ---------------------------------------------------------------------------
 // Our own PO <-> Xero bill reconciliation for one job. Comparison only: it
@@ -43,6 +44,8 @@ export interface PoReconcileRow {
   variance: number;
   reconciled: boolean;
   note: string | null;
+  /** Drawn from stock: the bill was paid when the stock was bought in bulk on J1057, so no Xero bill is expected on this job. */
+  fromStock: boolean;
   /** Proposed Xero bill(s) for this PO, best first. Nothing is applied until someone accepts one. */
   suggestions: PoReconcileSuggestion[];
 }
@@ -88,7 +91,7 @@ function toBill(row: typeof bills.$inferSelect): Omit<PoReconcileBill, "how"> & 
   };
 }
 
-export async function loadPoReconcile(jobDbId: string): Promise<PoReconcileData> {
+export async function loadPoReconcile(jobDbId: string, isStockJob = false): Promise<PoReconcileData> {
   const [poRows, jobBillRows, linkRows, statusRows] = await Promise.all([
     db.select().from(purchaseOrders).where(eq(purchaseOrders.jobId, jobDbId)),
     // This job's share of each bill: a bill split across jobs only counts its own part here.
@@ -144,7 +147,10 @@ export async function loadPoReconcile(jobDbId: string): Promise<PoReconcileData>
   const rows: PoReconcileRow[] = poRows.map((po) => {
     const matched = billsByPo.get(po.sourceId) ?? [];
     const xeroTotal = matched.reduce((s, b) => s + b.amount, 0);
-    const expected = po.orderStatus === "Cancelled" ? 0 : po.orderTotalIncTax;
+    // A PO drawn from stock was paid for on J1057 when the stock was bought, so it expects no bill on this job.
+    // (J1057's own POs are the bulk purchases themselves and are reconciled against their bills as normal.)
+    const fromStock = !isStockJob && po.orderStatus !== "Cancelled" && isStockPoDescription(po.description);
+    const expected = po.orderStatus === "Cancelled" || fromStock ? 0 : po.orderTotalIncTax;
     const state = statusByPo.get(po.sourceId);
     return {
       poSourceId: po.sourceId,
@@ -158,6 +164,7 @@ export async function loadPoReconcile(jobDbId: string): Promise<PoReconcileData>
       variance: xeroTotal - expected,
       reconciled: state?.reconciled ?? false,
       note: state?.note ?? null,
+      fromStock,
       suggestions: [],
     };
   });
@@ -186,7 +193,8 @@ export async function loadPoReconcile(jobDbId: string): Promise<PoReconcileData>
       invoiced: r.invoiced,
       orderDate: poRowBySourceId.get(r.poSourceId)?.orderDate?.toISOString().slice(0, 10) ?? "",
       supplierInvoiceRef: (poRowBySourceId.get(r.poSourceId)?.raw as { supplierInvoiceRef?: string | null } | null)?.supplierInvoiceRef ?? null,
-      reconciled: r.reconciled,
+      // Stock POs expect no bill, so there is nothing to suggest for them.
+      reconciled: r.reconciled || r.fromStock,
       matchedBillTotal: r.xeroTotal,
       matchedBillCount: r.bills.length,
     })),

@@ -27,6 +27,11 @@ import type { BuildxactPurchaseOrder } from "@/integrations/buildxact/types";
 export const STOCK_JOB_NUMBER = "J1057";
 const STOCK_TAG_RE = /\bSTOCK\b/i;
 
+/** True for a PO drawn from stock: "STOCK" as a whole word in its description. Shared with the PO reconciliation. */
+export function isStockPoDescription(description: string | null | undefined): boolean {
+  return STOCK_TAG_RE.test(description ?? "");
+}
+
 export interface StockDrawdownRow {
   poId: string;
   orderNumber: number;

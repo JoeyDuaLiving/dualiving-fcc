@@ -1,6 +1,7 @@
 "use client";
 
 import { useState } from "react";
+import Link from "next/link";
 import { useRouter } from "next/navigation";
 import { Card } from "@/components/shared/Card";
 import { StatusPill } from "@/components/shared/Badges";
@@ -23,6 +24,7 @@ async function post(body: Record<string, unknown>): Promise<void> {
 }
 
 function matchPill(row: PoReconcileRow) {
+  if (row.fromStock) return <StatusPill tone="good">From stock · J1057</StatusPill>;
   if (row.reconciled) return <StatusPill tone="good">Reconciled</StatusPill>;
   if (row.orderStatus === "Cancelled" && row.bills.length === 0) return <StatusPill tone="neutral">Cancelled</StatusPill>;
   if (row.bills.length === 0) return <StatusPill tone="warn">No Xero bill</StatusPill>;
@@ -98,7 +100,16 @@ function PoRow({ jobSourceId, row, candidates }: { jobSourceId: string; row: PoR
       <td className="py-3 pr-3 text-right tabular-nums text-slate-300 whitespace-nowrap">{formatAUD(row.total)}</td>
       <td className="py-3 pr-3 text-right tabular-nums text-slate-400 whitespace-nowrap">{formatAUD(row.invoiced)}</td>
       <td className="py-3 pr-3 min-w-[16rem]">
-        {row.bills.length === 0 && <span className="text-xs text-slate-500">None matched</span>}
+        {row.bills.length === 0 && row.fromStock && (
+          <span className="text-xs text-slate-400">
+            No bill expected: drawn from stock bought on J1057 (
+            <Link href="/stock" className="text-brand-400 hover:text-brand-300">
+              Stock
+            </Link>
+            )
+          </span>
+        )}
+        {row.bills.length === 0 && !row.fromStock && <span className="text-xs text-slate-500">None matched</span>}
         <ul className="space-y-1">
           {row.bills.map((b) => (
             <li key={b.sourceId} className="flex items-start justify-between gap-2 text-xs">
@@ -163,7 +174,7 @@ function PoRow({ jobSourceId, row, candidates }: { jobSourceId: string; row: PoR
             ))}
           </ul>
         )}
-        {candidates.length > 0 && !cancelled && (
+        {candidates.length > 0 && !cancelled && !(row.fromStock && row.bills.length === 0) && (
           <div className="mt-2 flex items-center gap-1.5">
             <select
               value={pick}
@@ -224,8 +235,8 @@ function PoRow({ jobSourceId, row, candidates }: { jobSourceId: string; row: PoR
           <label className="inline-flex items-center gap-1.5 text-xs text-slate-300 cursor-pointer">
             <input
               type="checkbox"
-              checked={row.reconciled}
-              disabled={busy}
+              checked={row.reconciled || row.fromStock}
+              disabled={busy || row.fromStock}
               onChange={(e) => saveStatus(e.target.checked, note)}
               className="accent-emerald-500"
             />
@@ -257,8 +268,10 @@ export function PoReconcileCard({ jobSourceId, data }: { jobSourceId: string; da
   const [bulkBusy, setBulkBusy] = useState(false);
   const [bulkError, setBulkError] = useState<string | null>(null);
   const live = data.rows.filter((r) => r.orderStatus !== "Cancelled");
-  const reconciledCount = live.filter((r) => r.reconciled).length;
-  const noBill = live.filter((r) => r.bills.length === 0 && !r.reconciled).length;
+  const reconciledCount = live.filter((r) => r.reconciled || r.fromStock).length;
+  const noBill = live.filter((r) => r.bills.length === 0 && !r.reconciled && !r.fromStock).length;
+  const stockPos = live.filter((r) => r.fromStock);
+  const stockTotal = stockPos.reduce((s, r) => s + r.total, 0);
   const unlinkedTotal = data.unlinkedBills.reduce((s, b) => s + b.amount, 0);
   const candidates = [...data.unlinkedBills, ...data.unassignedBills];
 
@@ -282,7 +295,7 @@ export function PoReconcileCard({ jobSourceId, data }: { jobSourceId: string; da
 
   // Open and unreconciled POs first, finished ones last - the to-do list order.
   const rows = [...data.rows].sort((a, b) => {
-    const rank = (r: PoReconcileRow) => (r.orderStatus === "Cancelled" ? 2 : r.reconciled ? 1 : 0);
+    const rank = (r: PoReconcileRow) => (r.orderStatus === "Cancelled" ? 2 : r.reconciled || r.fromStock ? 1 : 0);
     return rank(a) - rank(b) || b.orderNumber - a.orderNumber;
   });
 
@@ -307,6 +320,11 @@ export function PoReconcileCard({ jobSourceId, data }: { jobSourceId: string; da
           {data.unlinkedBills.length} Xero bill{data.unlinkedBills.length === 1 ? "" : "s"} on this job not matched to a PO
           {data.unlinkedBills.length > 0 ? ` (${formatAUD(unlinkedTotal)})` : ""}
         </StatusPill>
+        {stockPos.length > 0 && (
+          <StatusPill tone="neutral">
+            {stockPos.length} PO{stockPos.length === 1 ? "" : "s"} from stock ({formatAUD(stockTotal)}), reconciled against J1057
+          </StatusPill>
+        )}
         {suggestedPoCount > 0 && <StatusPill tone="neutral">{suggestedPoCount} PO{suggestedPoCount === 1 ? "" : "s"} with suggested matches</StatusPill>}
         {confident.length > 0 && (
           <button
